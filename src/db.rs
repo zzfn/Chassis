@@ -37,6 +37,7 @@ async fn init_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+    ensure_email_verification_tokens_table(pool).await?;
     ensure_agents_table(pool).await?;
     ensure_api_keys_table(pool).await?;
     ensure_tankbook_posts_table(pool).await?;
@@ -167,6 +168,24 @@ pub async fn ensure_users_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+    sqlx::query(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn ensure_email_verification_tokens_table(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS email_verification_tokens (
+            token      TEXT        PRIMARY KEY,
+            user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TIMESTAMPTZ NOT NULL
+        )"#,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -181,6 +200,7 @@ pub struct UserRow {
     pub id: Uuid,
     pub username: String,
     pub password_hash: String,
+    pub email_verified: bool,
 }
 
 /// 返回 None 表示用户名或邮箱已存在
@@ -189,7 +209,7 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         r#"INSERT INTO users (username, email, password_hash)
            VALUES ($1, $2, $3)
            ON CONFLICT DO NOTHING
-           RETURNING id, username, password_hash"#,
+           RETURNING id, username, password_hash, email_verified"#,
     )
     .bind(user.username)
     .bind(user.email)
@@ -202,13 +222,14 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         id: r.get("id"),
         username: r.get("username"),
         password_hash: r.get("password_hash"),
+        email_verified: r.get("email_verified"),
     }))
 }
 
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRow>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(
-        "SELECT id, username, password_hash FROM users WHERE email = $1",
+        "SELECT id, username, password_hash, email_verified FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -218,6 +239,7 @@ pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<Use
         id: r.get("id"),
         username: r.get("username"),
         password_hash: r.get("password_hash"),
+        email_verified: r.get("email_verified"),
     }))
 }
 
@@ -967,4 +989,61 @@ pub async fn create_tankbook_post(
     .bind(submitted_by)
     .fetch_one(pool).await?;
     Ok(row.get("id"))
+}
+
+pub async fn create_verification_token(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<String, sqlx::Error> {
+    let token = Uuid::new_v4().to_string().replace('-', "");
+    let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
+    sqlx::query(
+        "INSERT INTO email_verification_tokens (token, user_id, expires_at) VALUES ($1, $2, $3)",
+    )
+    .bind(&token)
+    .bind(user_id)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
+    Ok(token)
+}
+
+pub async fn consume_verification_token(
+    pool: &PgPool,
+    token: &str,
+) -> Result<Option<UserRow>, sqlx::Error> {
+    use sqlx::Row;
+    // 原子性：删除 token 并返回对应用户（过期的不删）
+    let row = sqlx::query(
+        r#"DELETE FROM email_verification_tokens
+           WHERE token = $1 AND expires_at > NOW()
+           RETURNING user_id"#,
+    )
+    .bind(token)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else { return Ok(None) };
+    let user_id: Uuid = row.get("user_id");
+
+    // 标记邮箱已验证
+    sqlx::query("UPDATE users SET email_verified = TRUE WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // 返回用户信息用于签发 JWT
+    let user = sqlx::query(
+        "SELECT id, username, password_hash, email_verified FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(user.map(|r| UserRow {
+        id:             r.get("id"),
+        username:       r.get("username"),
+        password_hash:  r.get("password_hash"),
+        email_verified: r.get("email_verified"),
+    }))
 }

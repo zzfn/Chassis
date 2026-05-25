@@ -18,8 +18,11 @@ use crate::{auth, db};
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub(crate) pool:       PgPool,
-    pub(crate) jwt_secret: String,
+    pub(crate) pool:           PgPool,
+    pub(crate) jwt_secret:     String,
+    pub(crate) resend_api_key: String,
+    pub(crate) app_url:        String,
+    pub(crate) from_email:     String,
 }
 
 // ── 共享辅助 ─────────────────────────────────────────────────────────────────
@@ -121,6 +124,52 @@ pub(crate) fn validate_svg(svg: &str) -> bool {
     !dangerous.iter().any(|p| lower.contains(p))
 }
 
+// ── 邮件发送（Resend）────────────────────────────────────────────────────────
+
+pub(crate) async fn send_verification_email(
+    resend_api_key: &str,
+    from_email: &str,
+    to_email: &str,
+    username: &str,
+    app_url: &str,
+    token: &str,
+) -> Result<(), String> {
+    let verify_url = format!("{}/verify-email?token={}", app_url, token);
+    let html = format!(r#"
+<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0d0d1a;color:#fff;border-radius:12px">
+  <h1 style="font-size:22px;font-weight:900;margin:0 0 8px">验证你的 DeepTank 账户</h1>
+  <p style="color:#a1a1aa;margin:0 0 24px">你好 {username}，点击下方按钮完成邮箱验证。</p>
+  <a href="{verify_url}"
+     style="display:inline-block;background:#2563eb;color:#fff;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none">
+    验证邮箱
+  </a>
+  <p style="color:#52525b;font-size:12px;margin:24px 0 0">链接 24 小时内有效。若非本人操作，忽略此邮件即可。</p>
+</div>
+"#, username = username, verify_url = verify_url);
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://api.resend.com/emails")
+        .header("Authorization", format!("Bearer {}", resend_api_key))
+        .json(&serde_json::json!({
+            "from": from_email,
+            "to":   [to_email],
+            "subject": "验证你的 DeepTank 账户",
+            "html": html,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        Err(format!("Resend {} {}", status, body))
+    }
+}
+
 // ── 启动 ─────────────────────────────────────────────────────────────────────
 
 pub async fn serve(port: u16) {
@@ -133,8 +182,11 @@ pub async fn serve(port: u16) {
     });
     println!("[DB] 已连接 PostgreSQL");
 
-    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "chassis-secret".to_string());
-    let state = AppState { pool, jwt_secret };
+    let jwt_secret     = std::env::var("JWT_SECRET").unwrap_or_else(|_| "chassis-secret".to_string());
+    let resend_api_key = std::env::var("RESEND_API_KEY").unwrap_or_default();
+    let app_url        = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let from_email     = std::env::var("FROM_EMAIL").unwrap_or_else(|_| "noreply@deeptank.xyz".to_string());
+    let state = AppState { pool, jwt_secret, resend_api_key, app_url, from_email };
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)

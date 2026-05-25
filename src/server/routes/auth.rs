@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Json, Path, Query, State},
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{auth, db};
-use crate::server::{AppState, json_err, extract_user_id};
+use crate::server::{AppState, json_err, extract_user_id, send_verification_email};
 
 #[derive(Deserialize)]
 struct RegisterRequest {
@@ -41,18 +41,38 @@ async fn handle_register(
         Ok(h)  => h,
         Err(_) => return json_err(500, "密码处理失败"),
     };
-    match db::create_user(pool, db::NewUser {
+    let user = match db::create_user(pool, db::NewUser {
         username:      req.username.trim(),
         email:         req.email.trim(),
         password_hash: &hash,
     }).await {
-        Ok(Some(user)) => {
-            let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
-            axum::Json(AuthResponse { token, username: user.username }).into_response()
+        Ok(Some(u)) => u,
+        Ok(None)    => return json_err(409, "用户名或邮箱已被注册"),
+        Err(e)      => return json_err(500, &e.to_string()),
+    };
+
+    let token = match db::create_verification_token(pool, user.id).await {
+        Ok(t)  => t,
+        Err(e) => return json_err(500, &e.to_string()),
+    };
+
+    if !state.resend_api_key.is_empty() {
+        if let Err(e) = send_verification_email(
+            &state.resend_api_key,
+            &state.from_email,
+            req.email.trim(),
+            &user.username,
+            &state.app_url,
+            &token,
+        ).await {
+            eprintln!("[Email] 发送失败: {}", e);
         }
-        Ok(None) => json_err(409, "用户名或邮箱已被注册"),
-        Err(e)   => json_err(500, &e.to_string()),
+    } else {
+        // 未配置 Resend 时打印验证链接，方便本地调试
+        println!("[Email] 验证链接: {}/verify-email?token={}", state.app_url, token);
     }
+
+    axum::Json(serde_json::json!({ "message": "请查收验证邮件" })).into_response()
 }
 
 async fn handle_login(
@@ -67,6 +87,9 @@ async fn handle_login(
     };
     if !auth::verify_password(&req.password, &user.password_hash) {
         return json_err(401, "邮箱或密码错误");
+    }
+    if !user.email_verified {
+        return json_err(403, "请先验证邮箱，检查你的收件箱");
     }
     let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
     axum::Json(AuthResponse { token, username: user.username }).into_response()
@@ -122,10 +145,29 @@ async fn delete_key(
     }
 }
 
+#[derive(Deserialize)]
+struct VerifyEmailQuery { token: String }
+
+async fn handle_verify_email(
+    State(state): State<AppState>,
+    Query(q): Query<VerifyEmailQuery>,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    match db::consume_verification_token(pool, &q.token).await {
+        Ok(Some(user)) => {
+            let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
+            axum::Json(AuthResponse { token, username: user.username }).into_response()
+        }
+        Ok(None) => json_err(400, "验证链接无效或已过期"),
+        Err(e)   => json_err(500, &e.to_string()),
+    }
+}
+
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/register", post(handle_register))
-        .route("/api/login",    post(handle_login))
-        .route("/api/keys",     get(list_keys).post(create_key))
-        .route("/api/keys/:id", axum::routing::delete(delete_key))
+        .route("/api/register",     post(handle_register))
+        .route("/api/login",        post(handle_login))
+        .route("/api/verify-email", get(handle_verify_email))
+        .route("/api/keys",         get(list_keys).post(create_key))
+        .route("/api/keys/:id",     axum::routing::delete(delete_key))
 }

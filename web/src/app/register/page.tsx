@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Loader2, Rocket } from "lucide-react"
-import { setCookie } from "@/lib/cookie"
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 
@@ -44,9 +43,7 @@ export default function RegisterPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? "注册失败"); return }
-      setCookie("token",    data.token)
-      setCookie("username", data.username)
-      router.push("/tanks?new=1")
+      router.push(`/verify-email-sent?email=${encodeURIComponent(email.trim())}`)
     } catch {
       setError("无法连接到服务器，请检查后端是否已启动")
     } finally {

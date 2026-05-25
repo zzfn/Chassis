@@ -156,6 +156,16 @@ if [ ! -f "$ENV_FILE" ]; then
   echo -e "${CYAN}▶ DeepSeek API Key（可选，用于 AI 生成坦克外观）${NC}"
   DEEPSEEK_KEY="$(ask_secret "DEEPSEEK_API_KEY")"
   echo ""
+
+  # ── Resend 邮件（可选）──────────────────────────────────────────────────────
+  echo -e "${CYAN}▶ Resend 邮件服务（可选，用于注册邮箱验证）${NC}"
+  echo "  留空可跳过，验证链接将打印到服务日志，方便本地调试"
+  RESEND_KEY="$(ask_secret "RESEND_API_KEY")"
+  if [ -n "$RESEND_KEY" ]; then
+    APP_URL="$(ask "APP_URL（前端访问地址，验证邮件链接前缀）" "https://deeptank.xyz")"
+    FROM_EMAIL="$(ask "FROM_EMAIL（发件人地址，需在 Resend 验证过域名）" "noreply@deeptank.xyz")"
+  fi
+  echo ""
   echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
   # 写 .env
@@ -166,6 +176,11 @@ JWT_SECRET=${JWT_RAW}
 PORT=${ENGINE_PORT}
 ENVEOF
   if [ -n "$DEEPSEEK_KEY" ]; then echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> "$ENV_FILE"; fi
+  if [ -n "${RESEND_KEY:-}" ]; then
+    echo "RESEND_API_KEY=${RESEND_KEY}"   >> "$ENV_FILE"
+    echo "APP_URL=${APP_URL}"             >> "$ENV_FILE"
+    echo "FROM_EMAIL=${FROM_EMAIL}"       >> "$ENV_FILE"
+  fi
   success ".env 已写入 $ENV_FILE"
 
 else
