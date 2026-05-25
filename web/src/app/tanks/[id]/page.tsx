@@ -911,7 +911,7 @@ ${guideUrl}
                         <span className="text-[#FFD93D] text-xs font-black uppercase tracking-widest">完整 PROMPT · 复制后直接发给 AI</span>
                         <CopyButton text={fullPrompt} />
                       </div>
-                      <pre className="bg-white px-3 py-2.5 font-mono text-[11px] text-zinc-300 max-h-72 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">
+                      <pre className="bg-zinc-900 px-3 py-2.5 font-mono text-[11px] text-zinc-300 max-h-72 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">
                         {fullPrompt}
                       </pre>
                     </div>
