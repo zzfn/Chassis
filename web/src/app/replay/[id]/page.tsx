@@ -9,6 +9,7 @@ import * as PIXI from "pixi.js"
 interface TankSnapshot {
   id: number; name: string; x: number; y: number
   body_angle: number; hp: number; alive: boolean; score: number
+  team_id?: number
 }
 interface BulletSnapshot { id: number; x: number; y: number; owner_id: number }
 interface StarSnapshot   { x: number; y: number }
@@ -17,6 +18,7 @@ interface FrameData {
   tanks: TankSnapshot[]
   bullets: BulletSnapshot[]
   stars: StarSnapshot[]
+  destroyed_mounds?: [number, number][]
 }
 interface JsExecStats {
   tank_name: string
@@ -30,7 +32,7 @@ interface JsExecStats {
   peak_memory_bytes: number
 }
 interface BattleResult {
-  winner: string; winner_label?: string; total_ticks: number; timed_out?: boolean
+  winner: string; winner_label?: string; winner_team?: number; total_ticks: number; timed_out?: boolean
   arena: { map: string[] }
   telemetry: FrameData[]
   battle_log: string[]
@@ -139,6 +141,54 @@ function useBGM(active: boolean) {
   }, [])
 }
 
+// ── 音效 ──────────────────────────────────────────────────────
+type SFXNote = { freq: number; type: OscillatorType; t: number; dur: number; vol: number }
+
+function _playSFX(notes: SFXNote[]) {
+  const ctx = new AudioContext()
+  ctx.resume().then(() => {
+    const maxEnd = Math.max(...notes.map(n => n.t + n.dur)) + 0.1
+    notes.forEach(({ freq, type, t, dur, vol }) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = type
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(vol, ctx.currentTime + t)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + dur)
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + t)
+      osc.stop(ctx.currentTime + t + dur + 0.02)
+    })
+    setTimeout(() => ctx.close(), maxEnd * 1000 + 200)
+  })
+}
+
+function playVictorySFX() {
+  _playSFX([
+    // 快速上行琶音 C5→E5→G5→C6
+    { freq: 523.25, type: 'square', t: 0.00, dur: 0.12, vol: 0.10 },
+    { freq: 659.25, type: 'square', t: 0.09, dur: 0.12, vol: 0.10 },
+    { freq: 783.99, type: 'square', t: 0.18, dur: 0.12, vol: 0.10 },
+    { freq: 1046.5, type: 'square', t: 0.27, dur: 0.12, vol: 0.10 },
+    // 最终和弦持音
+    { freq: 1046.5, type: 'square', t: 0.44, dur: 0.75, vol: 0.08 },
+    { freq:  783.99, type: 'square', t: 0.46, dur: 0.73, vol: 0.06 },
+    { freq:  659.25, type: 'square', t: 0.48, dur: 0.71, vol: 0.05 },
+  ])
+}
+
+function playDefeatSFX() {
+  _playSFX([
+    // 下行小调 G4→F4→Eb4→C4，锯齿波营造沉重感
+    { freq: 392.00, type: 'sawtooth', t: 0.00, dur: 0.28, vol: 0.07 },
+    { freq: 349.23, type: 'sawtooth', t: 0.24, dur: 0.28, vol: 0.07 },
+    { freq: 311.13, type: 'sawtooth', t: 0.48, dur: 0.28, vol: 0.07 },
+    { freq: 261.63, type: 'sawtooth', t: 0.72, dur: 0.65, vol: 0.06 },
+    // 低沉叹息尾音
+    { freq: 130.81, type: 'sawtooth', t: 0.90, dur: 0.55, vol: 0.04 },
+  ])
+}
+
 // ── 常量 ──────────────────────────────────────────────────────
 const WORLD  = 800
 const TILE   = 40
@@ -153,6 +203,22 @@ const PALETTE = [
   { body: 0x22c55e, dark: 0x14532d },
   { body: 0xa78bfa, dark: 0x4c1d95 },
 ]
+
+// 2v2 队伍调色板：队伍 0 = 青色，队伍 1 = 品红
+const TEAM_PIXI_PALETTE = [
+  { body: 0x00f5d4, dark: 0x005544 },
+  { body: 0xff3af2, dark: 0x7f1d6e },
+]
+
+// ── 星星 SVG ──────────────────────────────────────────────────
+const STAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <polygon points="20,3 24.5,15 38,15 27,23 31,36 20,28 9,36 13,23 2,15 15.5,15"
+    fill="#FFE600" opacity="0.95"/>
+  <polygon points="20,3 24.5,15 38,15 27,23 31,36 20,28 9,36 13,23 2,15 15.5,15"
+    fill="none" stroke="#FF3AF2" stroke-width="1.2" opacity="0.7"/>
+  <polygon points="20,8 23.5,16.5 33,16.5 25.5,22 28,31 20,25.5 12,31 14.5,22 7,16.5 16.5,16.5"
+    fill="#FFF0A0" opacity="0.45"/>
+</svg>`
 
 // ── 工具函数 ──────────────────────────────────────────────────
 function svgUrl(svg: string) {
@@ -239,6 +305,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
   const stars        = useRef<PIXI.Sprite[]>([])
   const bLayer       = useRef<PIXI.Container | null>(null)
   const sLayer       = useRef<PIXI.Container | null>(null)
+  const moundSprites = useRef<Map<string, PIXI.Sprite>>(new Map())
 
   // owner_id → BulletStyleDef，从 skins 构建
   const ownerStyleMap = useRef<Map<number, BulletStyleDef>>(new Map())
@@ -279,9 +346,15 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
 
     // ── 地图（SVG Sprite 贴图）───────────────────────────
     const mapC = new PIXI.Container()
+    const moundMap = new Map<string, PIXI.Sprite>()
     data.arena.map.forEach((row, r) =>
-      row.split('').forEach((ch, c) => mapC.addChild(makeTileSprite(ch, c * TS, r * TS)))
+      row.split('').forEach((ch, c) => {
+        const sp = makeTileSprite(ch, c * TS, r * TS)
+        mapC.addChild(sp)
+        if (ch === 'm') moundMap.set(`${c},${r}`, sp)
+      })
     )
+    moundSprites.current = moundMap
     app.stage.addChild(mapC)
 
     // ── 图层 ────────────────────────────────────────────
@@ -315,7 +388,10 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         sp.width = TS; sp.height = TS * 0.7; sp.anchor.set(0.5)
         body.addChild(sp)
       } else {
-        const pal = PALETTE[t.id % PALETTE.length]
+        const teamId = t.team_id ?? (t.id % 2)
+        const pal = (data.telemetry[0]?.tanks.length ?? 0) >= 3
+          ? TEAM_PIXI_PALETTE[teamId % 2]
+          : PALETTE[t.id % PALETTE.length]
         const g = new PIXI.Graphics()
         // 履带
         g.beginFill(pal.dark).drawRoundedRect(-TS * 0.4, -TS * 0.28, TS * 0.8, TS * 0.11, 2).endFill()
@@ -442,19 +518,27 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         })
       }
 
+      // 土堆摧毁
+      const dm = c.destroyed_mounds ?? []
+      moundSprites.current.forEach((sp, key) => {
+        const [col, row] = key.split(',').map(Number)
+        sp.visible = !dm.some(([dc, dr]) => dc === col && dr === row)
+      })
+
       // 星星
       const sl = sLayer.current
       if (sl) {
         const ss = c.stars ?? []
         while (stars.current.length < ss.length) {
-          const sp = new PIXI.Sprite(PIXI.Texture.WHITE)
-          sp.tint = 0xfbbf24; sp.width = sp.height = 14; sp.anchor.set(0.5)
+          const sp = PIXI.Sprite.from(svgUrl(STAR_SVG))
+          sp.width = sp.height = 20; sp.anchor.set(0.5)
           sl.addChild(sp); stars.current.push(sp)
         }
         stars.current.forEach((sp, i) => {
           const s = ss[i]
           if (!s) { sp.visible = false; return }
           sp.visible = true; sp.x = s.x * S; sp.y = s.y * S
+          sp.rotation += 0.008
         })
       }
     })
@@ -488,7 +572,8 @@ export default function ReplayPage() {
   const [bgm,      setBgm]      = useState(true)
   const [loadedAt]              = useState(() => new Date())
 
-  const seekFn = useRef<((idx: number) => void) | null>(null)
+  const seekFn  = useRef<((idx: number) => void) | null>(null)
+  const sfxDone = useRef(false)
 
   useBGM(playing && bgm)
 
@@ -511,13 +596,16 @@ export default function ReplayPage() {
     setFrameIdx(i); seekFn.current?.(i); setPlaying(false)
   }
   function handleReset() {
-    setPlaying(false); seekFn.current?.(0); setFrameIdx(0)
+    setPlaying(false); seekFn.current?.(0); setFrameIdx(0); sfxDone.current = false
   }
 
   const total  = data?.telemetry.length ?? 0
   const frame0 = data?.telemetry[0]
   const t0 = frame0?.tanks[0]
   const t1 = frame0?.tanks[1]
+  const t2 = frame0?.tanks[2]
+  const t3 = frame0?.tanks[3]
+  const is2v2 = (frame0?.tanks.length ?? 0) >= 3
   const result = data ? (data.timed_out ? "超时" : "击败") : "—"
 
   if (err) return (
@@ -546,11 +634,11 @@ export default function ReplayPage() {
     </main>
   )
 
-  const TANK_COLORS = ["#00F5D4", "#FF3AF2"] as const
+  const TEAM_COLORS = ["#00F5D4", "#FF3AF2"] as const
 
-  function TankIcon({ name, idx: i, size = 56 }: { name: string; idx: number; size?: number }) {
+  function TankIcon({ name, teamId = 0, size = 56 }: { name: string; teamId?: number; size?: number }) {
     const skin  = data!.skins?.[name]
-    const color = TANK_COLORS[i % 2]
+    const color = TEAM_COLORS[teamId % 2]
     return (
       <div
         className="shrink-0 overflow-hidden rounded-full flex items-center justify-center border-4"
@@ -575,7 +663,9 @@ export default function ReplayPage() {
     )
   }
 
-  const winnerName = data.winner_label ?? data.winner ?? "—"
+  const winnerName = is2v2
+    ? (data.winner_team !== undefined ? `Team ${data.winner_team === 0 ? "A" : "B"}` : data.winner_label ?? data.winner ?? "—")
+    : (data.winner_label ?? data.winner ?? "—")
 
   return (
     <main className="relative flex flex-1 flex-col overflow-hidden bg-[#0D0D1A] px-4 py-6">
@@ -613,9 +703,19 @@ export default function ReplayPage() {
               className="text-3xl font-black uppercase tracking-tighter text-white md:text-4xl"
               style={{ fontFamily: "var(--font-outfit)", textShadow: "2px 2px 0px #7B2FFF, 4px 4px 0px #FF3AF2" }}
             >
-              {t0?.name ?? "—"}
-              <span className="mx-3" style={{ color: "#FF3AF2" }}>vs</span>
-              {t1?.name ?? "—"}
+              {is2v2 ? (
+                <>
+                  <span style={{ color: "#00F5D4" }}>Team A</span>
+                  <span className="mx-3" style={{ color: "#FF3AF2" }}>vs</span>
+                  <span style={{ color: "#FF3AF2" }}>Team B</span>
+                </>
+              ) : (
+                <>
+                  {t0?.name ?? "—"}
+                  <span className="mx-3" style={{ color: "#FF3AF2" }}>vs</span>
+                  {t1?.name ?? "—"}
+                </>
+              )}
             </h1>
             <p className="mt-1 text-xs font-medium text-white/35">{result} · {loadedAt.toLocaleString()}</p>
           </div>
@@ -647,15 +747,19 @@ export default function ReplayPage() {
           className="overflow-hidden rounded-2xl"
           style={{ border: "4px solid #FF3AF2", boxShadow: "6px 6px 0 #FFE600, 12px 12px 0 #7B2FFF", background: "rgba(45,27,78,0.5)" }}
         >
-          <div className="flex items-stretch">
-            {/* Tank 1 */}
-            <div className="flex flex-1 items-center gap-4 px-6 py-4">
-              <TankIcon name={t0?.name ?? ""} idx={0} size={52} />
-              <div className="flex flex-col gap-1 min-w-0">
-                <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TANK_COLORS[0]}` }}>
-                  {t0?.name ?? "—"}
-                </p>
-                {data.winner === t0?.name && (
+          {is2v2 ? (
+            /* 2v2 布局：双队列示 */
+            <div className="flex items-stretch">
+              {/* Team A */}
+              <div className="flex flex-1 flex-col gap-2.5 px-5 py-4">
+                <p className="font-mono text-[10px] font-black uppercase tracking-[0.3em]" style={{ color: "#00F5D4" }}>Team A</p>
+                {[t0, t2].map(t => t && (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <TankIcon name={t.name} teamId={0} size={40} />
+                    <span className="truncate font-black text-white text-sm">{t.name}</span>
+                  </div>
+                ))}
+                {data.winner_team === 0 && (
                   <span
                     className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
                     style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
@@ -664,28 +768,27 @@ export default function ReplayPage() {
                   </span>
                 )}
               </div>
-            </div>
 
-            {/* VS divider */}
-            <div
-              className="flex flex-col items-center justify-center px-5"
-              style={{ borderLeft: "4px dashed rgba(255,58,242,0.3)", borderRight: "4px dashed rgba(255,58,242,0.3)" }}
-            >
-              <span
-                className="text-xl font-black uppercase tracking-widest"
-                style={{ color: "#FF3AF2", textShadow: "0 0 12px rgba(255,58,242,0.6)" }}
+              {/* VS 分隔 */}
+              <div
+                className="flex items-center justify-center px-5"
+                style={{ borderLeft: "4px dashed rgba(255,58,242,0.3)", borderRight: "4px dashed rgba(255,58,242,0.3)" }}
               >
-                VS
-              </span>
-            </div>
+                <span className="text-xl font-black uppercase tracking-widest" style={{ color: "#FF3AF2", textShadow: "0 0 12px rgba(255,58,242,0.6)" }}>
+                  VS
+                </span>
+              </div>
 
-            {/* Tank 2 */}
-            <div className="flex flex-1 items-center justify-end gap-4 px-6 py-4">
-              <div className="flex flex-col items-end gap-1 min-w-0">
-                <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TANK_COLORS[1]}` }}>
-                  {t1?.name ?? "—"}
-                </p>
-                {data.winner === t1?.name && (
+              {/* Team B */}
+              <div className="flex flex-1 flex-col gap-2.5 px-5 py-4 items-end">
+                <p className="font-mono text-[10px] font-black uppercase tracking-[0.3em]" style={{ color: "#FF3AF2" }}>Team B</p>
+                {[t1, t3].map(t => t && (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <span className="truncate font-black text-white text-sm">{t.name}</span>
+                    <TankIcon name={t.name} teamId={1} size={40} />
+                  </div>
+                ))}
+                {data.winner_team === 1 && (
                   <span
                     className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
                     style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
@@ -694,9 +797,57 @@ export default function ReplayPage() {
                   </span>
                 )}
               </div>
-              <TankIcon name={t1?.name ?? ""} idx={1} size={52} />
             </div>
-          </div>
+          ) : (
+            /* 1v1 布局 */
+            <div className="flex items-stretch">
+              {/* Tank 1 */}
+              <div className="flex flex-1 items-center gap-4 px-6 py-4">
+                <TankIcon name={t0?.name ?? ""} teamId={0} size={52} />
+                <div className="flex flex-col gap-1 min-w-0">
+                  <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TEAM_COLORS[0]}` }}>
+                    {t0?.name ?? "—"}
+                  </p>
+                  {data.winner === t0?.name && (
+                    <span
+                      className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                      style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
+                    >
+                      🏆 胜者
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* VS 分隔 */}
+              <div
+                className="flex flex-col items-center justify-center px-5"
+                style={{ borderLeft: "4px dashed rgba(255,58,242,0.3)", borderRight: "4px dashed rgba(255,58,242,0.3)" }}
+              >
+                <span className="text-xl font-black uppercase tracking-widest" style={{ color: "#FF3AF2", textShadow: "0 0 12px rgba(255,58,242,0.6)" }}>
+                  VS
+                </span>
+              </div>
+
+              {/* Tank 2 */}
+              <div className="flex flex-1 items-center justify-end gap-4 px-6 py-4">
+                <div className="flex flex-col items-end gap-1 min-w-0">
+                  <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TEAM_COLORS[1]}` }}>
+                    {t1?.name ?? "—"}
+                  </p>
+                  {data.winner === t1?.name && (
+                    <span
+                      className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                      style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
+                    >
+                      🏆 胜者
+                    </span>
+                  )}
+                </div>
+                <TankIcon name={t1?.name ?? ""} teamId={1} size={52} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Main content ── */}
@@ -751,7 +902,17 @@ export default function ReplayPage() {
                 data={data} playing={playing}
                 seekFn={seekFn}
                 onTick={setFrameIdx}
-                onEnd={() => setPlaying(false)}
+                onEnd={() => {
+                  setPlaying(false)
+                  if (bgm && !sfxDone.current && !data.timed_out) {
+                    sfxDone.current = true
+                    const won = is2v2
+                      ? data.winner_team === 0
+                      : data.winner === t0?.name
+                    if (won) playVictorySFX()
+                    else playDefeatSFX()
+                  }
+                }}
               />
             </div>
           </div>
@@ -769,7 +930,7 @@ export default function ReplayPage() {
               </div>
               <div className="flex flex-col divide-y-2 divide-dashed divide-[#00F5D4]/20 px-4">
                 {data.telemetry[frameIdx]?.tanks.map((t, i) => {
-                  const col = TANK_COLORS[i % 2]
+                  const col = TEAM_COLORS[(t.team_id ?? i) % 2]
                   return (
                     <div key={t.id} className="flex items-center justify-between py-3">
                       <div className="flex items-center gap-2">
@@ -830,7 +991,7 @@ export default function ReplayPage() {
                         return m.lowerBetter ? (a < b ? 0 : 1) : (a > b ? 0 : 1)
                       }
                       return stats.map((s, i) => {
-                        const col = TANK_COLORS[i % 2]
+                        const col = TEAM_COLORS[i % 2]
                         return (
                           <div key={s.tank_name} className="px-4 py-3 flex flex-col gap-1.5">
                             <div className="flex items-center gap-1.5 mb-0.5">

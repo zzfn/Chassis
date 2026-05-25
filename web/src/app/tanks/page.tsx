@@ -20,39 +20,67 @@ const CARD_SHADOWS: [string, string][] = [
   ["#FF3AF2", "#FF6B35"],
 ]
 
-const DEFAULT_CODE = `// 入门模板：朝敌冲锋，遇墙绕行，冷却好就开火
+const DEFAULT_CODE = `// 入门模板：技能 → 捡星 → 朝敌开火 → 冲锋
 function onIdle(me, enemy, game) {
-  if (!enemy) { me.turn("right"); return; }
-
-  var mx = me.tank.position[0], my = me.tank.position[1];
-  var ex = enemy.tank.position[0], ey = enemy.tank.position[1];
-  var dx = ex - mx, dy = ey - my;
+  var mx  = me.tank.position[0], my = me.tank.position[1];
+  var cur = me.tank.direction;
   var dirs = ["north","east","south","west"];
-  var ddx  = [0, 1, 0,-1], ddy = [-1, 0, 1, 0];
+  var ddx  = [0, 1, 0, -1], ddy = [-1, 0, 1, 0];
 
-  function turnTo(want) {
-    if (me.tank.direction === want) return false;
-    var diff = (dirs.indexOf(want) - dirs.indexOf(me.tank.direction) + 4) % 4;
-    me.turn(diff <= 2 ? "right" : "left");
-    return true;
-  }
-
-  function free(dir) {
-    var i = dirs.indexOf(dir);
-    var nx = mx + ddx[i], ny = my + ddy[i];
+  // 判断某方向下一格是否可通行
+  function free(d) {
+    var i = dirs.indexOf(d), nx = mx + ddx[i], ny = my + ddy[i];
     var row = game.map[ny];
     return !!(row && (row[nx] === "." || row[nx] === "o"));
   }
 
-  var want = Math.abs(dx) >= Math.abs(dy)
-    ? (dx > 0 ? "east" : "west")
-    : (dy > 0 ? "south" : "north");
-  if (!free(want)) {
-    want = Math.abs(dx) >= Math.abs(dy)
-      ? (dy !== 0 ? (dy > 0 ? "south" : "north") : "south")
-      : (dx !== 0 ? (dx > 0 ? "east"  : "west")  : "east");
+  // 最短路径转向，已对齐返回 false
+  function turnTo(want) {
+    if (cur === want) return false;
+    var diff = (dirs.indexOf(want) - dirs.indexOf(cur) + 4) % 4;
+    me.turn(diff <= 2 ? "right" : "left");
+    return true;
   }
 
+  // 朝目标坐标的最优方向
+  function dirTo(tx, ty) {
+    var dx = tx - mx, dy = ty - my;
+    return Math.abs(dx) >= Math.abs(dy)
+      ? (dx > 0 ? "east" : "west")
+      : (dy > 0 ? "south" : "north");
+  }
+
+  // 1. 技能：冷却好立即触发
+  if (me.skill.remainingCooldownFrames === 0) {
+    var sk = me.skill.type;
+    if      (sk === "shield")   me.shield();
+    else if (sk === "freeze")   me.freeze();
+    else if (sk === "stun")     me.stun();
+    else if (sk === "overload") me.overload();
+    else if (sk === "cloak")    me.cloak();
+    else if (sk === "poison")   me.poison();
+    else if (sk === "boost")    me.boost();
+  }
+
+  // 2. 捡最近星星（曼哈顿距离 < 7 格时优先追）
+  var star = game.star;
+  if (star) {
+    var dist = Math.abs(star[0] - mx) + Math.abs(star[1] - my);
+    if (dist < 7) {
+      var want = dirTo(star[0], star[1]);
+      if (!turnTo(want) && free(want)) { me.go(); return; }
+    }
+  }
+
+  // 3. 无敌人 → 直行巡逻，遇墙右转
+  if (!enemy) {
+    if (free(cur)) me.go();
+    else me.turn("right");
+    return;
+  }
+
+  // 4. 有敌人 → 对齐 → 开火 → 推进
+  var want = dirTo(enemy.tank.position[0], enemy.tank.position[1]);
   if (turnTo(want)) return;
   if (me.tank.shootCooldown === 0) me.fire();
   if (free(want)) me.go();
@@ -70,7 +98,20 @@ interface Tank {
   elo?: number
   skin?: TankSkin
   version?: number
+  skill_type?: string
 }
+
+const SKILLS = [
+  { key: "shield",   emoji: "🛡", name: "Shield",   desc: "激活护盾，最多吸收 1 发子弹（3 帧有效窗口）",    cd: 32 },
+  { key: "freeze",   emoji: "❄",  name: "Freeze",   desc: "冻结最近敌人 5 帧（命令保留不执行）",            cd: 32 },
+  { key: "stun",     emoji: "⚡", name: "Stun",     desc: "眩晕最近敌人 5 帧（命令被随机替换）",            cd: 33 },
+  { key: "overload", emoji: "🔥", name: "Overload", desc: "下次开炮发射双弹，造成双倍伤害",                 cd: 32 },
+  { key: "cloak",    emoji: "👁", name: "Cloak",    desc: "隐身 6 帧，彻底消失于敌方传感器",                cd: 36 },
+  { key: "poison",   emoji: "🧪", name: "Poison",   desc: "使最近敌人中毒 8 帧，其中 4 帧跳过命令",         cd: 30 },
+  { key: "teleport", emoji: "🌀", name: "Teleport", desc: "瞬移到指定坐标（近敌时锁定射击 2 帧）",          cd: 35 },
+  { key: "boost",    emoji: "🚀", name: "Boost",    desc: "加速 5 帧，每次移动 2 格",                       cd: 31 },
+] as const
+type SkillKey = typeof SKILLS[number]["key"]
 
 /* ── Avatar ── */
 function TankAvatar({ name, skin, size = 20 }: { name: string; skin?: TankSkin; size?: number }) {
@@ -198,12 +239,14 @@ function TanksContent() {
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 
+  const [credits,       setCredits]       = useState<number | null>(null)
   const [showNew,       setShowNew]       = useState(false)
   const [newName,       setNewName]       = useState("")
   const [skinDesc,      setSkinDesc]      = useState("")
   const [creating,      setCreating]      = useState(false)
   const [creatingStep,  setCreatingStep]  = useState<"" | "agent" | "skin">("")
   const [createError,   setCreateError]   = useState<string | null>(null)
+  const [rerollingId,   setRerollingId]   = useState<string | null>(null)
 
   const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
   const [deletingId,  setDeletingId]  = useState<string | null>(null)
@@ -220,6 +263,8 @@ function TanksContent() {
     fetch(`${apiBase}/api/my-tanks`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(setTanks).catch(() => setError("加载失败"))
       .finally(() => setLoading(false))
+    fetch(`${apiBase}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setCredits(d.credits ?? null)).catch(() => {})
   }, [router])
 
   useEffect(() => {
@@ -312,6 +357,7 @@ function TanksContent() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "创建失败")
+      if (typeof data.credits === "number") setCredits(data.credits)
       const desc = skinDesc.trim()
       if (desc) {
         setCreatingStep("skin")
@@ -325,6 +371,27 @@ function TanksContent() {
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "创建失败")
       setCreating(false); setCreatingStep("")
+    }
+  }
+
+  async function handleReroll(tankId: string) {
+    const token = getCookie("token")
+    if (!token) { router.push("/login"); return }
+    setRerollingId(tankId)
+    try {
+      const res  = await fetch(`${apiBase}/api/tanks/${tankId}/skill/reroll`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "抽取失败")
+      setTanks(prev => prev.map(t =>
+        t.agent_id === tankId ? { ...t, skill_type: data.skill_type } : t
+      ))
+      setCredits(data.credits)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "抽取失败")
+    } finally {
+      setRerollingId(null)
     }
   }
 
@@ -386,19 +453,36 @@ function TanksContent() {
             </h1>
           </div>
 
-          <motion.button
-            onClick={openNew}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 rounded-full border-4 border-[#FFE600] px-6 py-3 text-sm font-black uppercase tracking-widest text-white"
-            style={{
-              background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
-              boxShadow:   "0 0 20px rgba(255,58,242,0.4), 6px 6px 0 #FFE600",
-            }}
-          >
-            <Plus className="size-4" />
-            新建坦克
-          </motion.button>
+          <div className="flex items-center gap-3 shrink-0">
+            {credits !== null && (
+              <div
+                className="flex items-center gap-2 rounded-full border-4 px-4 py-1.5"
+                style={{ borderColor: "#FFE600", background: "rgba(255,230,0,0.1)", boxShadow: "0 0 12px rgba(255,230,0,0.25)" }}
+              >
+                <span className="text-sm">💎</span>
+                <span className="font-mono text-sm font-black text-[#FFE600]">{credits}</span>
+                <span className="text-xs font-black uppercase tracking-widest text-[#FFE600]/60">积分</span>
+              </div>
+            )}
+            <motion.button
+              onClick={openNew}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 rounded-full border-4 border-[#FFE600] px-6 py-3 text-sm font-black uppercase tracking-widest text-white"
+              style={{
+                background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
+                boxShadow:   "0 0 20px rgba(255,58,242,0.4), 6px 6px 0 #FFE600",
+              }}
+            >
+              <Plus className="size-4" />
+              新建坦克
+              {tanks.length > 0 && (
+                <span className="ml-1 rounded-full bg-[#FFE600]/20 border border-[#FFE600]/50 px-2 py-0.5 text-[10px] font-black text-[#FFE600]">
+                  💎 200
+                </span>
+              )}
+            </motion.button>
+          </div>
         </div>
 
         {/* ── Error ── */}
@@ -535,6 +619,17 @@ function TanksContent() {
                         >
                           Elo {elo}
                         </span>
+                        {tank.skill_type && (() => {
+                          const sk = SKILLS.find(s => s.key === tank.skill_type)
+                          return sk ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide"
+                              style={{ borderColor: "rgba(255,230,0,0.4)", color: "#FFE600", background: "rgba(255,230,0,0.08)" }}
+                            >
+                              {sk.emoji} {sk.name}
+                            </span>
+                          ) : null
+                        })()}
                         {tank.version != null && (
                           <span
                             className="inline-flex items-center rounded-full border-4 px-3 py-0.5 font-mono text-xs font-black uppercase tracking-wide"
@@ -569,6 +664,17 @@ function TanksContent() {
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent" }}
                     >
                       详情
+                    </button>
+                    <button
+                      onClick={() => handleReroll(tank.agent_id)}
+                      disabled={rerollingId === tank.agent_id || (credits !== null && credits < 100)}
+                      title={credits !== null && credits < 100 ? "积分不足（需 100）" : "花费 💎 100 积分随机抽取新技能"}
+                      className="flex items-center gap-1.5 rounded-full border-4 border-dashed px-4 py-2 text-sm font-black uppercase tracking-widest transition-all duration-150 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ borderColor: "#FFE600", color: "#FFE600" }}
+                    >
+                      {rerollingId === tank.agent_id
+                        ? <><Loader2 className="size-3.5 animate-spin" /><span>抽取中</span></>
+                        : <><Shuffle className="size-3.5" /><span>💎 100</span></>}
                     </button>
                     <button
                       onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
@@ -713,7 +819,14 @@ function TanksContent() {
               >
                 {creating ? (
                   <><Loader2 className="size-4 animate-spin" />{creatingStep === "skin" ? "生成皮肤中…" : "创建中…"}</>
-                ) : "创建坦克"}
+                ) : tanks.length > 0 ? (
+                  <span className="flex items-center gap-2">
+                    创建坦克
+                    <span className="rounded-full border-2 border-[#FFE600]/60 bg-[#FFE600]/15 px-2.5 py-0.5 text-xs font-black text-[#FFE600]">
+                      💎 200 积分
+                    </span>
+                  </span>
+                ) : "创建坦克（免费）"}
               </button>
             </div>
           </motion.div>

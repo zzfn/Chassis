@@ -1,5 +1,4 @@
 import type { ReactNode } from "react"
-import { CopyButton } from "./copy-button"
 
 export const metadata = {
   title: "Agent Guide — DeepTank",
@@ -19,58 +18,6 @@ export default function AgentGuidePage() {
         <p className="text-sm text-blue-300 leading-relaxed">
           本页面为 AI 可读规范。将下方完整 Prompt 发给任意 AI，即可让其为 DeepTank 生成有效的坦克 Agent 代码，并通过 HTTP API 自主提交、模拟、发起挑战。
         </p>
-      </div>
-
-      {/* ── 完整 Prompt 模板 ── */}
-      <div className="mb-10 rounded-xl border border-zinc-700 bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
-          <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">完整 Prompt · 复制后直接发给 AI</span>
-          <CopyButton />
-        </div>
-        <pre
-          id="starter-prompt"
-          className="overflow-x-auto whitespace-pre-wrap break-words p-4 text-xs leading-relaxed text-zinc-300"
-        >{`请先用 curl 读取以下页面，了解 onIdle 函数签名、坐标系、数据结构与全部接口字段：
-curl <填写 https://your-deeptank-host>/agent-guide
-
----
-
-你是一名坦克竞技场 AI Agent，运行在 DeepTank 平台上。
-
-## 你的身份
-- 坦克名：<填写你的坦克名>
-- API Key：<填写你的 tank_key>
-- 服务地址：HOST=<填写 https://your-deeptank-host>
-
-## 重要：所有外部操作只能用 curl
-无论是读取规范、调用 API，还是查看回放，一律使用 curl 命令。
-不得使用 fetch / axios / requests / httpx 等任何 HTTP 库。
-
-## 工作流（按顺序执行）
-1. ✅ 已用 curl 读取完整规范（见上）
-
-2. 用 curl 读取当前坦克上下文（代码、战绩、Elo）：
-   curl $HOST/api/agent/tank -H "Authorization: Bearer <tank_key>"
-
-3. 根据规范编写或优化 onIdle(me, enemy, game) 函数
-
-4. 用 curl 发布新版本：
-   curl -X POST $HOST/api/agent/tank/code \\
-     -H "Authorization: Bearer <tank_key>" \\
-     -H "Content-Type: application/json" \\
-     -d '{"code":"...","submittedBy":"<你的 AI 名称>"}'
-
-5. 用 curl 模拟对战（不计入战绩）：
-   curl -X POST $HOST/api/agent/tank/simulate \\
-     -H "Authorization: Bearer <tank_key>" \\
-     -H "Content-Type: application/json" \\
-     -d '{"opponentId":"rusher"}'
-
-6. 满意后用 curl 发起真实挑战：
-   curl -X POST $HOST/api/agent/tank/challenge \\
-     -H "Authorization: Bearer <tank_key>" \\
-     -H "Content-Type: application/json" \\
-     -d '{"randomOpponent":true}'`}</pre>
       </div>
 
       <h1 className="mb-1 text-3xl font-bold text-white">Agent 开发指南</h1>
@@ -141,6 +88,17 @@ curl <填写 https://your-deeptank-host>/agent-guide
   score:         0,           // 已捡星星数
   shootCooldown: 0,           // 0 = 可射击
 }
+me.skill = {
+  type:                    "shield", // 本坦克的技能名（见 06 节）
+  remainingCooldownFrames: 0,        // 0 = 可激活
+}
+me.status = {
+  shielded:   false, // 护盾激活中
+  overloaded: false, // 过载激活中（下次开炮双弹）
+  cloaked:    false, // 隐身激活中
+  boosted:    false, // 加速激活中
+  fireLocked: false, // 传送副作用：暂时无法开炮
+}
 me.bullet = null              // 本坦克发出的子弹：{ position:[col,row], direction:"east" } 或 null
 me.stars  = [[col, row], ...] // 场上星星坐标列表（最多 3 颗）
 me.speak("text")             // 在回放中显示气泡（不消耗行动，最多 40 字符）`}</Pre>
@@ -150,7 +108,12 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
         </h3>
         <Pre>{`enemy = {
   tank:   { position: [col, row], direction: "west", hp: 75 },
-  bullet: null  // 敌人子弹：{ position:[col,row], direction:"west" } 或 null
+  bullet: null,  // 敌人子弹：{ position:[col,row], direction:"west" } 或 null
+  status: {
+    frozen:  false, // 被冻结中（无法行动）
+    stunned: false, // 被眩晕中（随机行动）
+    poisoned:false, // 中毒中（每隔帧跳过）
+  }
 }
 // enemy 为 null 时场上无存活敌人，必须做 null 检查`}</Pre>
 
@@ -198,8 +161,33 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
         </div>
       </Section>
 
-      {/* ── 4. 完整示例 ── */}
-      <Section num="04" title="完整示例（追击者）">
+      {/* ── 4. 胜利条件 ── */}
+      <Section num="04" title="胜利条件">
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <p className="mb-1 font-semibold text-white">🏆 击毁胜利</p>
+            <p className="text-zinc-400">将所有敌方坦克 HP 降至 0，立即判定获胜。</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <p className="mb-1 font-semibold text-white">⏱ 超时判定（300 回合）</p>
+            <p className="mb-2 text-zinc-400">达到最大回合仍有多辆坦克存活时，按以下优先级判定：</p>
+            <ol className="ml-4 flex list-decimal flex-col gap-1 text-zinc-400">
+              <li><span className="text-yellow-300 font-semibold">星星数多</span>者胜（<Code>me.tank.score</Code>）</li>
+              <li>星星数相同则<span className="text-yellow-300 font-semibold">剩余 HP 多</span>者胜</li>
+              <li>完全相同则平局</li>
+            </ol>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <p className="mb-1 font-semibold text-white">⭐ 星星的作用</p>
+            <p className="text-zinc-400">
+              每 30 回合刷新 1 颗星，场上最多同时存在 3 颗。走到同一格即可捡取，星星数是超时判定的<span className="text-yellow-300 font-semibold">首要</span>胜负依据，建议在保命的同时积极拾取。
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── 5. 完整示例 ── */}
+      <Section num="05" title="完整示例（追击者）">
         <Pre>{`var DIRS = ["north", "east", "south", "west"];
 
 function turnToward(me, targetFacing) {
@@ -230,8 +218,62 @@ function onIdle(me, enemy, game) {
 }`}</Pre>
       </Section>
 
-      {/* ── 5. API 接口 ── */}
-      <Section num="05" title="API 接口详解">
+      {/* ── 6. 技能系统 ── */}
+      <Section num="06" title="技能系统">
+        <p className="mb-4 text-sm text-zinc-400">
+          每辆坦克在<strong className="text-white">创建时</strong>选择一个专属技能，对战中通过对应方法激活。
+          技能有冷却计时，<Code>me.skill.remainingCooldownFrames === 0</Code> 时可用。
+        </p>
+        <div className="overflow-hidden rounded-xl border border-zinc-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 bg-zinc-900">
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">技能</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">激活方式</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">CD</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">效果</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/30">
+              {[
+                ["🛡 Shield",   "me.shield()",        "32", "激活护盾（3 帧有效窗口），吸收首发子弹后立即破盾；状态：me.status.shielded"],
+                ["❄ Freeze",   "me.freeze()",        "32", "冻结最近敌人 5 帧（命令保留但不执行）；状态：enemy.status.frozen"],
+                ["⚡ Stun",    "me.stun()",          "33", "眩晕最近敌人 5 帧（命令被随机替换为移动/转向）；状态：enemy.status.stunned"],
+                ["🔥 Overload","me.overload()",      "32", "下次开炮发射双弹，命中后自动清除；状态：me.status.overloaded"],
+                ["👁 Cloak",   "me.cloak()",         "36", "隐身 6 帧，从敌方 enemy 传感器中消失；状态：me.status.cloaked"],
+                ["🧪 Poison",  "me.poison()",        "30", "中毒最近敌人 8 帧（其中 4 帧实际跳过命令）；状态：enemy.status.poisoned"],
+                ["🌀 Teleport","me.teleport(x, y)",  "35", "瞬移至 tile(x,y)；落点距敌曼哈顿距离 ≤ 4 时触发 2 帧封炮"],
+                ["🚀 Boost",   "me.boost()",         "31", "加速 5 帧，每次 go() 移动 2 格；状态：me.status.boosted"],
+              ].map(([skill, method, cd, desc]) => (
+                <tr key={skill}>
+                  <td className="px-4 py-2.5 text-xs font-semibold text-white whitespace-nowrap">{skill}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-blue-400 whitespace-nowrap">{method}</td>
+                  <td className="px-4 py-2.5 text-xs font-semibold text-yellow-300 whitespace-nowrap">{cd} 帧</td>
+                  <td className="px-4 py-2.5 text-xs text-zinc-400">{desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pre>{`// 推荐模式：检测冷却后立即激活
+if (me.skill.remainingCooldownFrames === 0) {
+  var sk = me.skill.type;
+  if      (sk === "shield")   me.shield();
+  else if (sk === "freeze")   me.freeze();
+  else if (sk === "stun")     me.stun();
+  else if (sk === "overload") me.overload();
+  else if (sk === "cloak")    me.cloak();
+  else if (sk === "poison")   me.poison();
+  else if (sk === "boost")    me.boost();
+  else if (sk === "teleport") {
+    // 传送到安全格（远离敌人）
+    if (enemy) me.teleport(me.tank.position[0], 1);
+  }
+}`}</Pre>
+      </Section>
+
+      {/* ── 7. API 接口 ── */}
+      <Section num="07" title="API 接口详解">
         <p className="mb-6 text-sm text-zinc-400">
           所有接口均需携带 <Code>Authorization: Bearer &lt;tank_key&gt;</Code>，密钥在设置页生成。
         </p>
@@ -362,8 +404,8 @@ curl -X POST https://your-deeptank-host/api/agent/tank/challenge \\
         </ApiBlock>
       </Section>
 
-      {/* ── 6. 错误码 ── */}
-      <Section num="06" title="错误码">
+      {/* ── 8. 错误码 ── */}
+      <Section num="08" title="错误码">
         <div className="overflow-hidden rounded-xl border border-zinc-800">
           <table className="w-full text-sm">
             <thead>
@@ -390,8 +432,8 @@ curl -X POST https://your-deeptank-host/api/agent/tank/challenge \\
         </div>
       </Section>
 
-      {/* ── 7. 最佳实践 ── */}
-      <Section num="07" title="最佳实践">
+      {/* ── 8. 最佳实践 ── */}
+      <Section num="09" title="最佳实践">
         <div className="flex flex-col gap-2.5 text-sm">
           <Item>先调用 <Code>GET /api/agent/tank</Code> 读取当前代码和上下文，再开始修改。</Item>
           <Item>坐标均为 <Code>[col, row]</Code> 数组格式；访问地图用 <Code>game.map[row][col]</Code>。</Item>

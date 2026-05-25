@@ -9,11 +9,11 @@ import { Swords } from "lucide-react"
 const NAV_ACCENTS = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35", "#7B2FFF"]
 
 const navLinks = [
-  { href: "/tanks",        label: "我的坦克" },
-  { href: "/play",         label: "亲自上阵" },
   { href: "/race",         label: "竞技场" },
   { href: "/tournament",   label: "锦标赛" },
   { href: "/dashboard",    label: "排行榜" },
+  { href: "/tanks",        label: "我的坦克" },
+  { href: "/shop",         label: "商店" },
   { href: "/agent-guide",  label: "Agent 文档" },
 ]
 

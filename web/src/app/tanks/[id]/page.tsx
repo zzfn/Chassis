@@ -31,7 +31,9 @@ interface TankDetail {
   pvp_wins: number
   pvp_losses: number
   pvp_battles: number
+  current_version: number
   battles: Battle[]
+  skill_type: string
 }
 
 interface ApiKey {
@@ -56,6 +58,17 @@ interface TankSkin {
   description?: string
   bullet_style?: string
 }
+
+const SKILLS = [
+  { key: "shield",   emoji: "🛡", name: "护盾",   desc: "激活后获得护盾，可抵挡 1 发子弹，持续 4 帧",     cd: 32, color: "#00F5D4" },
+  { key: "freeze",   emoji: "❄",  name: "冻结",   desc: "冻结最近敌人，使其跳过接下来 2 帧的命令",       cd: 34, color: "#67e8f9" },
+  { key: "stun",     emoji: "⚡", name: "眩晕",   desc: "眩晕敌人 6 帧，期间其命令随机执行",            cd: 31, color: "#FFE600" },
+  { key: "overload", emoji: "🔥", name: "过载",   desc: "下次开炮时发射双弹，造成双倍伤害",              cd: 32, color: "#FF6B35" },
+  { key: "cloak",    emoji: "👁", name: "隐身",   desc: "隐身 8 帧，从敌方传感器中消失（草丛额外加成）", cd: 32, color: "#7B2FFF" },
+  { key: "poison",   emoji: "🧪", name: "中毒",   desc: "对最近敌人施毒 4 帧，中毒期间每隔帧跳过命令",   cd: 34, color: "#22c55e" },
+  { key: "teleport", emoji: "🌀", name: "传送",   desc: "瞬间传送到指定坐标（需在代码中传入目标位置）",  cd: 40, color: "#FF3AF2" },
+  { key: "boost",    emoji: "🚀", name: "加速",   desc: "加速 6 帧，每次移动命令推进 2 格",             cd: 31, color: "#fbbf24" },
+] as const
 
 const BULLET_STYLES = [
   { value: "default", label: "默认",  color: "#fef08a", shape: "circle"  },
@@ -566,7 +579,12 @@ export default function TankDetailPage() {
             <div className="flex flex-col gap-4 flex-1 min-w-0">
               <div>
                 <h1 className="text-7xl sm:text-8xl font-black uppercase tracking-tight leading-none break-all">{tank.agent_name}</h1>
-                <p className="mt-2 text-sm font-bold text-black/60">拥有者：{tank.owner}</p>
+                <div className="mt-2 flex items-center gap-3">
+                  <p className="text-sm font-bold text-black/60">拥有者：{tank.owner}</p>
+                  <span className="border-2 border-black bg-[#FFD93D] px-2 py-0.5 text-xs font-black shadow-[2px_2px_0px_0px_#000]">
+                    V{tank.current_version}
+                  </span>
+                </div>
               </div>
 
               {/* 成就标签 */}
@@ -587,9 +605,9 @@ export default function TankDetailPage() {
               {/* 统计网格 */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 border-4 border-black shadow-[6px_6px_0px_0px_#000]">
                 {[
-                  ["RANK",    `${rank.tier} ${rank.division}`, "#FFD93D", true],
-                  ["SCORE",   rank.score.toString(),           "#FFD93D", true],
-                  ["RECORD",  `${tank.pvp_wins}-${tank.pvp_losses}-0`, "#FFD93D", true],
+                  ["RANK",    `${rank.tier} ${rank.division}`, rank.color, true],
+                  ["SCORE",   rank.score.toString(),           rank.color, true],
+                  ["RECORD",  `${tank.pvp_wins}-${tank.pvp_losses}-0`, rank.color, true],
                   ["WIN RATE",`${winRate}%`,                   "#1a1a1a", false],
                   ["BATTLES", tank.pvp_battles.toString(),     "#1a1a1a", false],
                   ["STATUS",  "活跃",                           "#1a1a1a", false],
@@ -599,8 +617,8 @@ export default function TankDetailPage() {
                     className="flex flex-col gap-1 px-4 py-3 border-r-4 border-b-4 border-black last:border-r-0 [&:nth-child(3)]:border-r-0 sm:[&:nth-child(3)]:border-r-4 sm:[&:nth-child(6)]:border-r-0"
                     style={{ backgroundColor: bg as string }}
                   >
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${isDark ? "text-black/60" : "text-black/60"}`}>{label as string}</p>
-                    <p className={`text-xl font-black ${isDark ? "text-black" : "text-black"}`}>{value as string}</p>
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${isDark ? "text-black/60" : "text-white/50"}`}>{label as string}</p>
+                    <p className={`text-xl font-black ${isDark ? "text-black" : "text-white"}`}>{value as string}</p>
                   </div>
                 ))}
               </div>
@@ -721,7 +739,12 @@ export default function TankDetailPage() {
         {/* ── 标题区 ── */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <h1 className="text-5xl font-black uppercase tracking-tight leading-none">{tank.agent_name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-5xl font-black uppercase tracking-tight leading-none">{tank.agent_name}</h1>
+              <span className="border-2 border-black bg-[#FFD93D] px-2 py-0.5 text-sm font-black shadow-[2px_2px_0px_0px_#000]">
+                V{tank.current_version}
+              </span>
+            </div>
             <p className="text-sm font-bold text-black/60">当前对战记录：{tank.pvp_wins} 胜 · {tank.pvp_losses} 负</p>
             {achievements.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-2">
@@ -1040,24 +1063,13 @@ ${guideUrl}
                     </span>
                   </div>
                   <button
-                    onClick={() => setViewingCode(viewingCode?.agent_id === v.agent_id ? null : v)}
+                    onClick={() => setViewingCode(v)}
                     className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                   >
-                    {viewingCode?.agent_id === v.agent_id ? "收起" : "查看代码"}
+                    查看代码
                   </button>
                 </div>
               ))}
-              {viewingCode && (
-                <div className="border-t-4 border-black">
-                  <MonacoEditor
-                    height={300}
-                    language="javascript"
-                    theme="vs-dark"
-                    value={viewingCode.code}
-                    options={{ readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 12, lineNumbers: "on" }}
-                  />
-                </div>
-              )}
             </div>
           )}
 
@@ -1071,17 +1083,29 @@ ${guideUrl}
                 return (
                   <div key={battle.id} className="border-b-4 border-black px-4 py-4 flex items-center gap-4">
                     {/* W/L 方块 */}
-                    <div
-                      className={`relative flex size-10 shrink-0 items-center justify-center border-4 border-black font-black ${won ? "bg-[#FF6B6B] text-white" : "bg-white text-white"}`}
-                    >
-                      {won ? "W" : "L"}
+                    <div className={`relative flex size-12 shrink-0 flex-col items-center justify-center border-4 border-black font-black shadow-[3px_3px_0px_0px_#000] ${won ? "bg-[#00C853] text-white" : "bg-[#FF3D00] text-white"}`}>
+                      <span className="text-[10px] font-black tracking-widest opacity-80 leading-none">{won ? "WIN" : "LOSS"}</span>
+                      <span className="text-xl leading-tight">{won ? "★" : "✕"}</span>
                     </div>
 
                     {/* 对阵信息 */}
                     <div className="flex flex-1 flex-col gap-0.5 min-w-0">
-                      <span className="text-sm font-black uppercase tracking-wide truncate">
-                        {battle.challenger.toUpperCase()} VS {battle.opponent.toUpperCase()}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap text-sm font-black uppercase tracking-wide">
+                        {[battle.challenger, battle.opponent].map((name, i) => {
+                          const isMe = name === tank.agent_name
+                          return (
+                            <React.Fragment key={i}>
+                              {i === 1 && <span className="text-black/30 font-bold text-xs">VS</span>}
+                              <span className={isMe
+                                ? "border-2 border-black bg-[#FFE600] px-1.5 py-0.5 text-xs leading-none"
+                                : "text-black/70"
+                              }>
+                                {name.toUpperCase()}
+                              </span>
+                            </React.Fragment>
+                          )
+                        })}
+                      </div>
                       <span className="text-xs font-bold text-black/50">
                         {battle.total_ticks} 回合 · {new Date(battle.created_at).toLocaleString("zh-CN")}
                       </span>
@@ -1194,13 +1218,63 @@ ${guideUrl}
                 )}
 
                 {/* 技能 Tab */}
-                {manageTab === "skill" && (
-                  <div className="flex flex-col items-center gap-3 py-10 text-center">
-                    <div className="text-4xl">⚡</div>
-                    <p className="text-sm font-black uppercase tracking-wide">技能系统</p>
-                    <p className="text-xs font-bold text-black/50">技能功能即将上线，敬请期待。</p>
-                  </div>
-                )}
+                {manageTab === "skill" && (() => {
+                  const sk = SKILLS.find(s => s.key === tank.skill_type) ?? SKILLS[0]
+                  return (
+                    <div className="flex flex-col gap-4">
+                      {/* 当前技能卡 */}
+                      <div
+                        className="flex items-center gap-4 border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000]"
+                        style={{ background: `${sk.color}18`, borderColor: sk.color }}
+                      >
+                        <div
+                          className="flex size-14 shrink-0 items-center justify-center border-4 border-black text-3xl shadow-[3px_3px_0px_0px_#000]"
+                          style={{ background: `${sk.color}30` }}
+                        >
+                          {sk.emoji}
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-black">{sk.name}</span>
+                            <span
+                              className="border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                              style={{ background: sk.color, color: "#000" }}
+                            >
+                              CD {sk.cd}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-black/60">{sk.desc}</p>
+                        </div>
+                      </div>
+
+                      {/* 所有技能一览 */}
+                      <p className="text-[10px] font-black uppercase tracking-widest text-black/40">所有技能</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {SKILLS.map(s => {
+                          const active = s.key === tank.skill_type
+                          return (
+                            <div
+                              key={s.key}
+                              className="flex items-center gap-2.5 border-2 border-black px-3 py-2"
+                              style={{ background: active ? `${s.color}20` : "transparent", borderColor: active ? s.color : "#00000020" }}
+                            >
+                              <span className="text-xl">{s.emoji}</span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-black truncate">{s.name}</p>
+                                <p className="text-[10px] text-black/40">CD {s.cd}</p>
+                              </div>
+                              {active && (
+                                <span className="ml-auto shrink-0 border border-black px-1.5 py-0.5 text-[9px] font-black uppercase" style={{ background: s.color }}>
+                                  装备中
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* 外观 Tab */}
                 {manageTab === "appearance" && (
@@ -1346,6 +1420,48 @@ ${guideUrl}
         {shareModal}
 
       </div>
+
+      {/* 代码查看弹窗 */}
+      {viewingCode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setViewingCode(null)}
+        >
+          <div
+            className="relative flex w-full max-w-3xl flex-col border-4 border-black bg-white shadow-[8px_8px_0px_0px_#000] mx-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 弹窗标题栏 */}
+            <div className="flex items-center justify-between border-b-4 border-black bg-[#C4B5FD] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="font-black text-xl">V{viewingCode.version}</span>
+                {viewingCode.submitted_by && (
+                  <span className="border-2 border-black bg-white px-2 py-0.5 text-xs font-black">
+                    {AI_ICONS[viewingCode.submitted_by] ?? "🤖"} {viewingCode.submitted_by}
+                  </span>
+                )}
+                <span className="text-xs font-bold text-black/60">
+                  {new Date(viewingCode.created_at).toLocaleString("zh-CN")}
+                </span>
+              </div>
+              <button
+                onClick={() => setViewingCode(null)}
+                className="border-2 border-black bg-white p-1 shadow-[2px_2px_0px_0px_#000] hover:bg-red-100 active:shadow-none active:translate-x-px active:translate-y-px transition-all"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <MonacoEditor
+              height={480}
+              language="javascript"
+              theme="vs-dark"
+              value={viewingCode.code}
+              options={{ readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: "on" }}
+            />
+          </div>
+        </div>
+      )}
+
     </main>
   )
 }
