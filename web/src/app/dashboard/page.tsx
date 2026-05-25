@@ -19,6 +19,7 @@ interface PlayerEntry {
   pvp_losses: number
   elo: number
   version?: number
+  svg?: string
 }
 
 const PERIOD_ACCENTS: Record<Period, string> = {
@@ -126,20 +127,23 @@ function SortDropdown({ value, onChange }: { value: SortKey; onChange: (v: SortK
   )
 }
 
-function TankAvatar({ name }: { name: string }) {
-  const initials = name.slice(0, 2).toUpperCase()
-  const hue      = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
-  const color    = `hsl(${hue}, 70%, 60%)`
+function TankAvatar({ name, svg }: { name: string; svg?: string }) {
+  const hue   = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  const color = `hsl(${hue}, 70%, 60%)`
   return (
     <div
-      className="flex size-12 shrink-0 items-center justify-center rounded-full border-4 text-sm font-black text-white"
+      className="flex size-12 shrink-0 items-center justify-center rounded-full border-4 overflow-hidden"
       style={{
         background:  `hsl(${hue}, 40%, 15%)`,
         borderColor: color,
         boxShadow:   `0 0 12px ${color}60`,
       }}
     >
-      {initials}
+      {svg
+        ? <svg viewBox="-20 -14 40 28" width={36} height={26}
+            dangerouslySetInnerHTML={{ __html: svg }} />
+        : <span className="text-sm font-black text-white">{name.slice(0, 2).toUpperCase()}</span>
+      }
     </div>
   )
 }
@@ -363,7 +367,7 @@ export default function DashboardPage() {
 
                   {/* Tank info */}
                   <div className="flex items-center gap-3 min-w-0">
-                    <TankAvatar name={p.agent_name} />
+                    <TankAvatar name={p.agent_name} svg={p.svg} />
                     <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-black text-white truncate">{p.agent_name}</span>

@@ -587,8 +587,17 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
         created_at: r.get("created_at"),
     }).collect();
 
-    let pvp_wins   = battles.iter().filter(|b| b.winner == agent_name).count() as i64;
-    let pvp_losses = battles.iter().filter(|b| b.winner != agent_name).count() as i64;
+    let count_row = sqlx::query(r#"
+        SELECT
+            COUNT(*) FILTER (WHERE winner = $2)  AS pvp_wins,
+            COUNT(*) FILTER (WHERE winner != $2) AS pvp_losses
+        FROM battles
+        WHERE challenger_id IS NOT NULL
+          AND ((challenger_id = $1 AND agent_name = $2)
+            OR (opponent_id  = $1 AND opponent   = $2))
+    "#).bind(user_id).bind(&agent_name).fetch_one(pool).await?;
+    let pvp_wins:   i64 = count_row.get("pvp_wins");
+    let pvp_losses: i64 = count_row.get("pvp_losses");
 
     let elo: f64 = sqlx::query(
         "SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2 LIMIT 1"
@@ -991,6 +1000,7 @@ pub struct PlayerEntry {
     pub pvp_losses: i64,
     pub elo: f64,
     pub version: i64,
+    pub svg: Option<String>,
 }
 
 pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<PlayerEntry>, sqlx::Error> {
@@ -1004,7 +1014,8 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             COUNT(b.id) FILTER (WHERE b.winner = la.name)      AS pvp_wins,
             COUNT(b.id) FILTER (WHERE b.winner != la.name)     AS pvp_losses,
             COALESCE(er.elo, 1000.0)                            AS elo,
-            la.version                                          AS version
+            la.version                                          AS version,
+            ts.skin                                             AS skin
         FROM (
             SELECT DISTINCT ON (user_id, name) id, user_id, name,
                 (SELECT COUNT(*) FROM agents a2 WHERE a2.user_id = agents.user_id AND a2.name = agents.name) AS version
@@ -1020,18 +1031,24 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             (b.opponent_id  = la.user_id AND b.opponent   = la.name)
           )
         LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
-        GROUP BY la.id, la.name, u.username, er.elo, la.version
+        LEFT JOIN tank_skins  ts ON ts.user_id = la.user_id AND ts.agent_name = la.name
+        GROUP BY la.id, la.name, u.username, er.elo, la.version, ts.skin
         ORDER BY elo DESC, pvp_wins DESC, pvp_battles DESC
     "#).bind(since).fetch_all(pool).await?;
-    Ok(rows.iter().map(|r| PlayerEntry {
-        agent_id:    r.get("agent_id"),
-        agent_name:  r.get("agent_name"),
-        owner:       r.get("owner"),
-        pvp_battles: r.get("pvp_battles"),
-        pvp_wins:    r.get("pvp_wins"),
-        pvp_losses:  r.get("pvp_losses"),
-        elo:         r.get("elo"),
-        version:     r.get("version"),
+    Ok(rows.iter().map(|r| {
+        let svg = r.try_get::<serde_json::Value, _>("skin").ok()
+            .and_then(|v| v.get("svg")?.as_str().map(String::from));
+        PlayerEntry {
+            agent_id:    r.get("agent_id"),
+            agent_name:  r.get("agent_name"),
+            owner:       r.get("owner"),
+            pvp_battles: r.get("pvp_battles"),
+            pvp_wins:    r.get("pvp_wins"),
+            pvp_losses:  r.get("pvp_losses"),
+            elo:         r.get("elo"),
+            version:     r.get("version"),
+            svg,
+        }
     }).collect())
 }
 
@@ -1103,6 +1120,7 @@ pub async fn search_opponents(
         pvp_losses:  r.get("pvp_losses"),
         elo:         r.get("elo"),
         version:     r.get("version"),
+        svg:         None,
     }).collect())
 }
 
