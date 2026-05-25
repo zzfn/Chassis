@@ -23,6 +23,8 @@ ask() {
     printf "${BOLD}%s${NC}: " "$prompt" >/dev/tty
   fi
   read -r var </dev/tty
+  # 去掉首尾空白和 Windows 终端发来的 CR
+  var="$(printf '%s' "$var" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   var="${var:-$default}"
   echo "$var"
 }
