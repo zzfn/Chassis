@@ -3,7 +3,9 @@
 mod routes;
 
 use axum::{
+    extract::State,
     http::Method,
+    response::IntoResponse,
     routing::get,
     Json, Router,
 };
@@ -85,6 +87,18 @@ pub(crate) async fn resolve_api_key(
     let key = extract_bearer_token(headers)
         .or_else(|| headers.get("x-api-key").and_then(|v| v.to_str().ok()))?;
     db::find_user_by_api_key(pool, key).await.ok().flatten()
+}
+
+/// 提取并校验管理员身份，返回 user_id；非管理员或未登录则返回 None
+pub(crate) async fn extract_admin_user_id(
+    headers: &axum::http::HeaderMap,
+    pool: &PgPool,
+    jwt_secret: &str,
+) -> Option<Uuid> {
+    let user_id = extract_user_id(headers, jwt_secret)?;
+    let user = db::get_user_profile(pool, user_id).await.ok()??;
+    if !user.is_admin { return None; }
+    Some(user_id)
 }
 
 pub(crate) fn period_since(period: Option<&str>) -> DateTime<Utc> {
@@ -170,6 +184,67 @@ pub(crate) async fn send_verification_email(
     }
 }
 
+// ── 全局统计接口 ─────────────────────────────────────────────────────────────
+
+async fn handle_stats(State(state): State<AppState>) -> axum::response::Response {
+    match db::get_platform_stats(&state.pool).await {
+        Ok(stats) => axum::Json(stats).into_response(),
+        Err(e)    => json_err(500, &e.to_string()),
+    }
+}
+
+// ── TankBook 公开流 ──────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct TankbookPageQuery {
+    #[serde(default)]
+    page: i64,
+}
+
+async fn handle_list_tankbook(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<TankbookPageQuery>,
+) -> axum::response::Response {
+    let limit  = 20_i64;
+    let offset = q.page.max(0) * limit;
+    match db::list_tankbook_posts(&state.pool, limit, offset).await {
+        Ok(posts) => axum::Json(posts).into_response(),
+        Err(e)    => json_err(500, &e.to_string()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CreateTankbookPostRequest {
+    body: String,
+}
+
+async fn handle_create_tankbook(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<CreateTankbookPostRequest>,
+) -> axum::response::Response {
+    let pool = &state.pool;
+    let Some(user_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+    if req.body.trim().is_empty() { return json_err(400, "内容不能为空"); }
+    if req.body.len() > 2000      { return json_err(400, "内容超过 2000 字符上限"); }
+
+    // 查询用户名（用于 author_name）
+    let author_name = match db::get_user_profile(pool, user_id).await {
+        Ok(Some(p)) => p.username,
+        _           => return json_err(500, "获取用户信息失败"),
+    };
+
+    match db::create_tankbook_post(
+        pool, "post", user_id, &author_name,
+        None, None, None, req.body.trim(), None,
+    ).await {
+        Ok(id) => axum::Json(serde_json::json!({ "ok": true, "id": id.to_string() })).into_response(),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
 // ── 启动 ─────────────────────────────────────────────────────────────────────
 
 pub async fn serve(port: u16) {
@@ -195,10 +270,16 @@ pub async fn serve(port: u16) {
 
     let app = Router::new()
         .route("/", get(|| async { Json(serde_json::json!({ "name": "DeepTank API", "status": "ok" })) }))
+        // 全局统计（公开）
+        .route("/api/stats",    get(handle_stats))
+        // TankBook 公开流
+        .route("/api/tankbook", get(handle_list_tankbook).post(handle_create_tankbook))
         .merge(routes::battle::router())
         .merge(routes::auth::router())
         .merge(routes::tank::router())
         .merge(routes::agent::router())
+        .merge(routes::admin::router())
+        .merge(routes::play::router())
         .with_state(state)
         .layer(cors);
 

@@ -173,6 +173,17 @@ pub async fn ensure_users_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+    // 管理员权限与封禁状态列（迁移：老库自动补列）
+    sqlx::query(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false"
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -201,6 +212,8 @@ pub struct UserRow {
     pub username: String,
     pub password_hash: String,
     pub email_verified: bool,
+    pub is_admin: bool,
+    pub banned: bool,
 }
 
 /// 返回 None 表示用户名或邮箱已存在
@@ -209,7 +222,7 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         r#"INSERT INTO users (username, email, password_hash)
            VALUES ($1, $2, $3)
            ON CONFLICT DO NOTHING
-           RETURNING id, username, password_hash, email_verified"#,
+           RETURNING id, username, password_hash, email_verified, is_admin, banned"#,
     )
     .bind(user.username)
     .bind(user.email)
@@ -223,26 +236,30 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         username: r.get("username"),
         password_hash: r.get("password_hash"),
         email_verified: r.get("email_verified"),
+        is_admin: r.get("is_admin"),
+        banned: r.get("banned"),
     }))
 }
 
 pub struct UserProfile {
-    pub id:       Uuid,
-    pub username: String,
-    pub email:    String,
+    pub id:         Uuid,
+    pub username:   String,
+    pub email:      String,
     pub tank_count: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub is_admin:   bool,
+    pub banned:     bool,
 }
 
 pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(r#"
-        SELECT u.id, u.username, u.email, u.created_at,
+        SELECT u.id, u.username, u.email, u.created_at, u.is_admin, u.banned,
                COUNT(DISTINCT a.name) AS tank_count
         FROM users u
         LEFT JOIN agents a ON a.user_id = u.id
         WHERE u.id = $1
-        GROUP BY u.id, u.username, u.email, u.created_at
+        GROUP BY u.id, u.username, u.email, u.created_at, u.is_admin, u.banned
     "#)
     .bind(user_id)
     .fetch_optional(pool)
@@ -253,13 +270,15 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
         email:       r.get("email"),
         tank_count:  r.get("tank_count"),
         created_at:  r.get("created_at"),
+        is_admin:    r.get("is_admin"),
+        banned:      r.get("banned"),
     }))
 }
 
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRow>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(
-        "SELECT id, username, password_hash, email_verified FROM users WHERE email = $1",
+        "SELECT id, username, password_hash, email_verified, is_admin, banned FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -270,6 +289,8 @@ pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<Use
         username: r.get("username"),
         password_hash: r.get("password_hash"),
         email_verified: r.get("email_verified"),
+        is_admin: r.get("is_admin"),
+        banned: r.get("banned"),
     }))
 }
 
@@ -1138,6 +1159,303 @@ pub async fn create_tankbook_post(
     Ok(row.get("id"))
 }
 
+// ── 全局平台统计 ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct PlatformStats {
+    pub total_users:      i64,
+    pub total_agents:     i64,
+    pub total_battles:    i64,
+    pub total_pvp_battles: i64,
+    pub battles_today:    i64,
+    pub top_players:      Vec<TopPlayer>,
+    pub elo_distribution: EloDistribution,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TopPlayer {
+    pub username:    String,
+    pub elo:         f64,
+    pub pvp_battles: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EloDistribution {
+    pub bronze:   i64,
+    pub silver:   i64,
+    pub gold:     i64,
+    pub platinum: i64,
+    pub diamond:  i64,
+}
+
+pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Error> {
+    use sqlx::Row;
+
+    // 聚合基础计数
+    let counts = sqlx::query(r#"
+        SELECT
+            (SELECT COUNT(*) FROM users)                                    AS total_users,
+            (SELECT COUNT(DISTINCT name || user_id::text) FROM agents)      AS total_agents,
+            (SELECT COUNT(*) FROM battles)                                  AS total_battles,
+            (SELECT COUNT(*) FROM battles WHERE challenger_id IS NOT NULL AND opponent_id IS NOT NULL) AS total_pvp_battles,
+            (SELECT COUNT(*) FROM battles WHERE created_at >= NOW() - INTERVAL '1 day') AS battles_today
+    "#).fetch_one(pool).await?;
+
+    let total_users:       i64 = counts.get("total_users");
+    let total_agents:      i64 = counts.get("total_agents");
+    let total_battles:     i64 = counts.get("total_battles");
+    let total_pvp_battles: i64 = counts.get("total_pvp_battles");
+    let battles_today:     i64 = counts.get("battles_today");
+
+    // Top 5 玩家（按 Elo 最高）
+    let top_rows = sqlx::query(r#"
+        SELECT u.username, er.elo,
+               COUNT(b.id) AS pvp_battles
+        FROM elo_ratings er
+        JOIN users u ON u.id = er.user_id
+        LEFT JOIN battles b ON b.challenger_id IS NOT NULL
+          AND ((b.challenger_id = er.user_id AND b.agent_name = er.agent_name)
+            OR (b.opponent_id  = er.user_id AND b.opponent   = er.agent_name))
+        GROUP BY u.username, er.elo
+        ORDER BY er.elo DESC
+        LIMIT 5
+    "#).fetch_all(pool).await?;
+    let top_players: Vec<TopPlayer> = top_rows.iter().map(|r| TopPlayer {
+        username:    r.get("username"),
+        elo:         r.get("elo"),
+        pvp_battles: r.get("pvp_battles"),
+    }).collect();
+
+    // Elo 分布：bronze<1100, silver<1300, gold<1500, platinum<1800, diamond>=1800
+    let dist_row = sqlx::query(r#"
+        SELECT
+            COUNT(*) FILTER (WHERE elo <  1100) AS bronze,
+            COUNT(*) FILTER (WHERE elo >= 1100 AND elo < 1300) AS silver,
+            COUNT(*) FILTER (WHERE elo >= 1300 AND elo < 1500) AS gold,
+            COUNT(*) FILTER (WHERE elo >= 1500 AND elo < 1800) AS platinum,
+            COUNT(*) FILTER (WHERE elo >= 1800) AS diamond
+        FROM elo_ratings
+    "#).fetch_one(pool).await?;
+    let elo_distribution = EloDistribution {
+        bronze:   dist_row.get("bronze"),
+        silver:   dist_row.get("silver"),
+        gold:     dist_row.get("gold"),
+        platinum: dist_row.get("platinum"),
+        diamond:  dist_row.get("diamond"),
+    };
+
+    Ok(PlatformStats {
+        total_users,
+        total_agents,
+        total_battles,
+        total_pvp_battles,
+        battles_today,
+        top_players,
+        elo_distribution,
+    })
+}
+
+// ── TankBook 公开流 ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct TankbookPostEntry {
+    pub id:          String,
+    pub post_type:   String,
+    pub author_name: String,
+    pub body:        String,
+    pub match_id:    Option<String>,
+    pub created_at:  DateTime<Utc>,
+    /// 对战关联信息（winner, total_ticks, opponent）
+    pub battle_winner:      Option<String>,
+    pub battle_total_ticks: Option<i32>,
+    pub battle_opponent:    Option<String>,
+}
+
+/// 列出最近帖子（含对战关联信息）
+pub async fn list_tankbook_posts(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<TankbookPostEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT
+            p.id::text, p.post_type, p.author_name, p.body,
+            p.match_id::text AS match_id, p.created_at,
+            b.winner AS battle_winner, b.total_ticks AS battle_total_ticks, b.opponent AS battle_opponent
+        FROM tankbook_posts p
+        LEFT JOIN battles b ON b.id = p.match_id
+        ORDER BY p.created_at DESC
+        LIMIT $1 OFFSET $2
+    "#)
+    .bind(limit).bind(offset)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| TankbookPostEntry {
+        id:          r.get("id"),
+        post_type:   r.get("post_type"),
+        author_name: r.get("author_name"),
+        body:        r.get("body"),
+        match_id:    r.get("match_id"),
+        created_at:  r.get("created_at"),
+        battle_winner:      r.try_get("battle_winner").unwrap_or(None),
+        battle_total_ticks: r.try_get("battle_total_ticks").unwrap_or(None),
+        battle_opponent:    r.try_get("battle_opponent").unwrap_or(None),
+    }).collect())
+}
+
+// ── Admin 管理接口 ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct AdminUserEntry {
+    pub id:          String,
+    pub username:    String,
+    pub email:       String,
+    pub is_admin:    bool,
+    pub banned:      bool,
+    pub created_at:  DateTime<Utc>,
+    pub agent_count: i64,
+}
+
+/// 列出所有用户（管理员用）
+pub async fn admin_list_users(pool: &PgPool) -> Result<Vec<AdminUserEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT u.id::text, u.username, u.email, u.is_admin, u.banned, u.created_at,
+               COUNT(DISTINCT a.name) AS agent_count
+        FROM users u
+        LEFT JOIN agents a ON a.user_id = u.id
+        GROUP BY u.id, u.username, u.email, u.is_admin, u.banned, u.created_at
+        ORDER BY u.created_at DESC
+    "#).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| AdminUserEntry {
+        id:          r.get("id"),
+        username:    r.get("username"),
+        email:       r.get("email"),
+        is_admin:    r.get("is_admin"),
+        banned:      r.get("banned"),
+        created_at:  r.get("created_at"),
+        agent_count: r.get("agent_count"),
+    }).collect())
+}
+
+/// 封禁 / 解封用户
+pub async fn admin_set_banned(pool: &PgPool, user_id: Uuid, banned: bool) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("UPDATE users SET banned = $1 WHERE id = $2")
+        .bind(banned).bind(user_id)
+        .execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminTankEntry {
+    pub agent_id:       String,
+    pub name:           String,
+    pub owner_username: String,
+    pub elo:            f64,
+    pub pvp_battles:    i64,
+    pub created_at:     DateTime<Utc>,
+}
+
+/// 列出最近 50 个 agent（管理员用）
+pub async fn admin_list_tanks(pool: &PgPool) -> Result<Vec<AdminTankEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT sub.agent_id, sub.name, u.username AS owner_username,
+               COALESCE(er.elo, 1000.0) AS elo,
+               COUNT(b.id)              AS pvp_battles,
+               sub.created_at
+        FROM (
+            SELECT DISTINCT ON (user_id, name) id::text AS agent_id, user_id, name, created_at
+            FROM agents
+            ORDER BY user_id, name, created_at DESC
+        ) sub
+        JOIN users u ON u.id = sub.user_id
+        LEFT JOIN elo_ratings er ON er.user_id = sub.user_id AND er.agent_name = sub.name
+        LEFT JOIN battles b ON b.challenger_id IS NOT NULL AND (
+            (b.challenger_id = sub.user_id AND b.agent_name = sub.name)
+            OR (b.opponent_id = sub.user_id AND b.opponent  = sub.name)
+        )
+        GROUP BY sub.agent_id, sub.name, u.username, er.elo, sub.created_at
+        ORDER BY sub.created_at DESC
+        LIMIT 50
+    "#).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| AdminTankEntry {
+        agent_id:       r.get("agent_id"),
+        name:           r.get("name"),
+        owner_username: r.get("owner_username"),
+        elo:            r.get("elo"),
+        pvp_battles:    r.get("pvp_battles"),
+        created_at:     r.get("created_at"),
+    }).collect())
+}
+
+/// 管理员删除坦克（仅 agents 表，保留战斗记录）
+pub async fn admin_delete_tank(pool: &PgPool, agent_id: Uuid) -> Result<bool, sqlx::Error> {
+    use sqlx::Row;
+    // 先找 user_id 和 name
+    let Some(row) = sqlx::query("SELECT user_id, name FROM agents WHERE id = $1 LIMIT 1")
+        .bind(agent_id).fetch_optional(pool).await? else { return Ok(false) };
+    let user_id: Uuid = row.get("user_id");
+    let name: String  = row.get("name");
+
+    let mut tx = pool.begin().await?;
+    // 删除同名所有版本、附属数据
+    sqlx::query("DELETE FROM api_keys   WHERE user_id = $1 AND name       = $2")
+        .bind(user_id).bind(&name).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM tank_skins WHERE user_id = $1 AND agent_name = $2")
+        .bind(user_id).bind(&name).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM elo_ratings WHERE user_id = $1 AND agent_name = $2")
+        .bind(user_id).bind(&name).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM agents     WHERE user_id = $1 AND name       = $2")
+        .bind(user_id).bind(&name).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminSystemStats {
+    pub total_users:         i64,
+    pub total_agents:        i64,
+    pub total_battles:       i64,
+    pub battles_last_24h:    i64,
+}
+
+/// 列出最近 N 场对战（管理员用）
+pub async fn admin_list_recent_battles(pool: &PgPool, limit: i64) -> Result<Vec<TankBattleRecord>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT b.id::text, b.agent_name AS challenger, b.opponent, b.winner, b.total_ticks, b.created_at
+        FROM battles b
+        WHERE b.challenger_id IS NOT NULL
+        ORDER BY b.created_at DESC
+        LIMIT $1
+    "#)
+    .bind(limit)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| TankBattleRecord {
+        id: r.get("id"),
+        challenger: r.get("challenger"),
+        opponent: r.get("opponent"),
+        winner: r.get("winner"),
+        total_ticks: r.get("total_ticks"),
+        created_at: r.get("created_at"),
+    }).collect())
+}
+
+/// 系统指标（管理员用）
+pub async fn admin_system_stats(pool: &PgPool) -> Result<AdminSystemStats, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(r#"
+        SELECT
+            (SELECT COUNT(*) FROM users)                                          AS total_users,
+            (SELECT COUNT(DISTINCT name || user_id::text) FROM agents)            AS total_agents,
+            (SELECT COUNT(*) FROM battles)                                        AS total_battles,
+            (SELECT COUNT(*) FROM battles WHERE created_at >= NOW() - INTERVAL '1 day') AS battles_last_24h
+    "#).fetch_one(pool).await?;
+    Ok(AdminSystemStats {
+        total_users:      row.get("total_users"),
+        total_agents:     row.get("total_agents"),
+        total_battles:    row.get("total_battles"),
+        battles_last_24h: row.get("battles_last_24h"),
+    })
+}
+
 pub async fn create_verification_token(
     pool: &PgPool,
     user_id: Uuid,
@@ -1181,7 +1499,7 @@ pub async fn consume_verification_token(
 
     // 返回用户信息用于签发 JWT
     let user = sqlx::query(
-        "SELECT id, username, password_hash, email_verified FROM users WHERE id = $1",
+        "SELECT id, username, password_hash, email_verified, is_admin, banned FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -1192,5 +1510,7 @@ pub async fn consume_verification_token(
         username:       r.get("username"),
         password_hash:  r.get("password_hash"),
         email_verified: r.get("email_verified"),
+        is_admin:       r.get("is_admin"),
+        banned:         r.get("banned"),
     }))
 }
