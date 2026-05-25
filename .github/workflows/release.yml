@@ -7,9 +7,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ── Rust 二进制（双架构并行）─────────────────────────────────────────────
   build-rust:
@@ -25,7 +22,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact: deeptank-linux-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
@@ -33,7 +30,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: 缓存 Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.1
         with:
           key: ${{ matrix.target }}
 
@@ -43,7 +40,7 @@ jobs:
       - name: 重命名产物
         run: cp target/${{ matrix.target }}/release/deeptank ${{ matrix.artifact }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -57,12 +54,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
       - name: 发布 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
