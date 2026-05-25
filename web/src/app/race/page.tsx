@@ -95,7 +95,7 @@ function RaceContent() {
 
   useEffect(() => {
     const token = getCookie("token")
-    if (!token) return
+    if (!token) { router.push("/login"); return }
     fetch(`${apiBase}/api/my-tanks`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : [])
       .then((tanks: MyTank[]) => {
@@ -108,7 +108,14 @@ function RaceContent() {
 
     fetch(`${apiBase}/api/players`)
       .then(r => r.json())
-      .then(setPlayers)
+      .then((data: Player[]) => {
+        setPlayers(data)
+        const paramOpponent = searchParams.get("opponent")
+        if (paramOpponent) {
+          const found = data.find(p => p.agent_id === paramOpponent)
+          if (found) setSelectedOpponent(found)
+        }
+      })
       .catch(() => {})
   }, [searchParams])
 

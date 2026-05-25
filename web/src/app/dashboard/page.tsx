@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Loader2, Trophy } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
+import { getEloTier } from "@/lib/elo"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -52,7 +53,6 @@ export default function DashboardPage() {
   const [players, setPlayers] = useState<PlayerEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [challenging, setChallenging] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>("all")
   const [sortBy, setSortBy] = useState<SortKey>("elo")
 
@@ -72,24 +72,8 @@ export default function DashboardPage() {
       .finally(() => setLoading(false))
   }, [period])
 
-  async function challenge(agentId: string) {
-    const token = getCookie("token")
-    if (!token) { router.push("/login"); return }
-    setChallenging(agentId)
-    setError(null)
-    try {
-      const res = await fetch(`${apiBase}/api/challenge/${agentId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? `请求失败 ${res.status}`)
-      router.push(`/replay/${data.id}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "挑战失败")
-    } finally {
-      setChallenging(null)
-    }
+  function challenge(agentId: string) {
+    router.push(`/race?opponent=${agentId}`)
   }
 
   const sorted = [...players].sort((a, b) => {
@@ -249,11 +233,10 @@ export default function DashboardPage() {
                   {!isMe && (
                     <Button
                       onClick={() => challenge(p.agent_id)}
-                      disabled={challenging === p.agent_id}
                       size="sm"
                       className="bg-blue-600 text-white hover:bg-blue-500"
                     >
-                      {challenging === p.agent_id ? <Loader2 className="size-3.5 animate-spin" /> : "挑战"}
+                      挑战
                     </Button>
                   )}
                 </div>
