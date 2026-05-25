@@ -184,8 +184,8 @@ fn run_game_loop(
     let (rx, ry, rf) = physics::start_positions(1); // Rusher：(18,18,West)
 
     // 玩家 id=0 → team_id=0；Rusher id=1 → team_id=1
-    let player_tank = physics::TankState::new(0, "玩家", px, py, pf, 0);
-    let rusher_tank = physics::TankState::new(1, "Rusher", rx, ry, rf, 1);
+    let player_tank = physics::TankState::new(0, "玩家", px, py, pf, 0, physics::SkillType::Shield);
+    let rusher_tank = physics::TankState::new(1, "Rusher", rx, ry, rf, 1, physics::SkillType::Shield);
 
     // 初始化 Rusher 沙箱（只在此线程内创建，不跨线程传递）
     let rusher_sandbox = match QuickJsSandbox::new("Rusher", RUSHER_JS) {
@@ -432,6 +432,15 @@ fn run_game_loop(
                 alive:        t.alive,
                 score:        t.score,
                 team_id:      t.team_id,
+                skill_type:   t.skill_type.as_str().to_string(),
+                skill_cooldown: t.skill_cooldown,
+                shielded:     t.status.shielded   > 0,
+                frozen:       t.status.frozen     > 0,
+                stunned:      t.status.stunned    > 0,
+                overloaded:   t.status.overloaded,
+                cloaked:      t.status.cloaked    > 0,
+                poisoned:     t.status.poisoned   > 0,
+                boosted:      t.status.boosted    > 0,
             }).collect(),
             bullets: state.bullets.iter().filter(|b| b.active).map(|b| battle::BulletSnapshot {
                 id:       b.id,

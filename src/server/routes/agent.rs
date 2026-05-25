@@ -7,7 +7,7 @@ use axum::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{battle::{ArenaEngine, BattleResult}, db};
+use crate::{battle::{ArenaEngine, BattleResult}, db, physics::SkillType};
 use crate::server::{
     AppState, json_err, resolve_api_key, period_since,
 };
@@ -117,7 +117,14 @@ async fn agent_submit_code(
     let code         = req.code;
     let submitted_by = req.submitted_by;
 
-    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref()).await {
+    if name.is_empty() || name.len() > 32 {
+        return json_err(400, "坦克名称长度须在 1-32 字符之间");
+    }
+    if code.len() > 65536 {
+        return json_err(400, "代码超过 64KB 上限");
+    }
+
+    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref(), "shield").await {
         Ok(id) => {
             let version = db::get_agent_version_number(pool, auth.user_id, &name, id).await.unwrap_or(1);
             axum::Json(serde_json::json!({
@@ -351,9 +358,14 @@ async fn agent_challenge(
     let c_code = challenger.code.clone();
     let o_code = opponent.code.clone();
     let opponent_user_id = opponent.user_id;
+    let c_skill = SkillType::from_str(&challenger.skill_type);
+    let o_skill = SkillType::from_str(&opponent.skill_type);
 
     let battle_result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
-        let owned = vec![(c_name.as_str(), c_code.as_str()), (o_name.as_str(), o_code.as_str())];
+        let owned = vec![
+            (c_name.as_str(), c_code.as_str(), c_skill),
+            (o_name.as_str(), o_code.as_str(), o_skill),
+        ];
         let engine = ArenaEngine::new(owned)?;
         Ok(engine.run())
     }).await;
@@ -419,7 +431,10 @@ async fn agent_simulate(
     let mirror = format!("{}_mirror", name);
     let code2 = code.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
-        let owned = vec![(name.as_str(), code.as_str()), (mirror.as_str(), code2.as_str())];
+        let owned = vec![
+            (name.as_str(), code.as_str(), SkillType::Shield),
+            (mirror.as_str(), code2.as_str(), SkillType::Shield),
+        ];
         let engine = ArenaEngine::new(owned)?;
         Ok(engine.run())
     }).await;

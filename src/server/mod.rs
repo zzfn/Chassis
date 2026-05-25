@@ -130,12 +130,49 @@ pub(crate) const TANK_SVG_SYSTEM_PROMPT: &str = r#"你是一名专业的 SVG 坦
 
 pub(crate) fn validate_svg(svg: &str) -> bool {
     let lower = svg.to_lowercase();
-    let dangerous = [
-        "<script", "</script", "javascript:", "onerror=", "onload=",
-        "<image", "<foreignobject", "<use", "xlink:href", "data:text/html",
-        "<!entity", "<!doctype",
+    // 拒绝任何事件属性（on*=）、javascript:、外部引用、危险标签
+    let blocked = [
+        "javascript:", "data:", "xlink:href", "href=", " on",
+        "<script", "<use", "<image", "<foreignobject", "<iframe",
+        "<embed", "<object", "<set", "<animate", "<!entity", "<!doctype",
+        "expression(", "url(",
     ];
-    !dangerous.iter().any(|p| lower.contains(p))
+    if blocked.iter().any(|p| lower.contains(p)) {
+        return false;
+    }
+    // 只允许纯绘图标签
+    let allowed_tags = [
+        "rect", "circle", "ellipse", "line", "polyline", "polygon",
+        "path", "g", "defs", "lineargradient", "radialgradient", "stop",
+        "clippath", "mask", "text", "tspan", "title",
+    ];
+    // 提取所有 <tagname 或 </tagname，验证每个都在白名单里
+    let mut i = 0;
+    let bytes = lower.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            i += 1;
+            // 跳过结束斜杠
+            if i < bytes.len() && bytes[i] == b'/' { i += 1; }
+            // 跳过注释 <!--
+            if lower[i.saturating_sub(1)..].starts_with("!--") {
+                i += 3;
+                continue;
+            }
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b':') {
+                i += 1;
+            }
+            let tag = &lower[start..i];
+            if tag.is_empty() { continue; }
+            if !allowed_tags.contains(&tag) {
+                return false;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    true
 }
 
 // ── 邮件发送（Resend）────────────────────────────────────────────────────────

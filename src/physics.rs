@@ -1,6 +1,7 @@
 /// 坦克竞技场物理层（格子 + 回合制）
 
 use std::collections::VecDeque;
+use serde::{Deserialize, Serialize};
 
 // ─── 地图常量 ──────────────────────────────────────────────────────────────
 pub const GRID_W: usize = 20;
@@ -123,6 +124,107 @@ pub enum TankCommand {
     TurnLeft,
     TurnRight,
     Fire,
+    UseSkill(Option<(usize, usize)>), // 传送技能：Some((col, row))；其余技能：None
+}
+
+// ─── 技能系统 ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillType {
+    Shield,
+    Freeze,
+    Stun,
+    Overload,
+    Cloak,
+    Poison,
+    Teleport,
+    Boost,
+}
+
+impl Default for SkillType { fn default() -> Self { SkillType::Shield } }
+
+impl SkillType {
+    pub fn cooldown_max(&self) -> u32 {
+        match self {
+            SkillType::Shield   => 32,
+            SkillType::Freeze   => 32, // 32(原34)：效果大幅增强，CD 同步缩短
+            SkillType::Stun     => 33, // 33(原31)：最强控制，微加 CD
+            SkillType::Overload => 32,
+            SkillType::Cloak    => 36, // 36(原32)：7帧隐身效果强，CD 拉长
+            SkillType::Poison   => 30, // 30(原34)：效果增强，CD 同步缩短
+            SkillType::Teleport => 35, // 35(原40)：降低门槛
+            SkillType::Boost    => 31,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SkillType::Shield   => "shield",
+            SkillType::Freeze   => "freeze",
+            SkillType::Stun     => "stun",
+            SkillType::Overload => "overload",
+            SkillType::Cloak    => "cloak",
+            SkillType::Poison   => "poison",
+            SkillType::Teleport => "teleport",
+            SkillType::Boost    => "boost",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "freeze"   => SkillType::Freeze,
+            "stun"     => SkillType::Stun,
+            "overload" => SkillType::Overload,
+            "cloak"    => SkillType::Cloak,
+            "poison"   => SkillType::Poison,
+            "teleport" => SkillType::Teleport,
+            "boost"    => SkillType::Boost,
+            _          => SkillType::Shield,
+        }
+    }
+}
+
+/// 坦克实时状态（持续帧数倒计时）
+#[derive(Debug, Clone, Default)]
+pub struct TankStatus {
+    pub shielded:    u32,   // 剩余帧数：护盾
+    pub frozen:      u32,   // 剩余帧数：冻结（跳过命令出队）
+    pub stunned:     u32,   // 剩余帧数：眩晕（随机化命令）
+    pub overloaded:  bool,  // 直到下次开火
+    pub cloaked:     u32,   // 剩余帧数：隐身（敌人传感器不可见）
+    pub poisoned:    u32,   // 剩余帧数：中毒（每隔一帧跳过命令）
+    pub boosted:     u32,   // 剩余帧数：加速（移动 2 格）
+    pub fire_locked: u32,   // 剩余帧数：传送锁定（不能射击）
+    pub poison_skip: bool,  // 中毒状态下交替跳帧标志
+}
+
+impl TankStatus {
+    pub fn tick(&mut self) {
+        if self.shielded    > 0 { self.shielded    -= 1; }
+        if self.frozen      > 0 { self.frozen      -= 1; }
+        if self.stunned     > 0 { self.stunned     -= 1; }
+        if self.cloaked     > 0 { self.cloaked     -= 1; }
+        if self.boosted     > 0 { self.boosted     -= 1; }
+        if self.fire_locked > 0 { self.fire_locked -= 1; }
+        if self.poisoned    > 0 {
+            self.poisoned    -= 1;
+            self.poison_skip  = !self.poison_skip;
+        } else {
+            self.poison_skip = false;
+        }
+    }
+}
+
+/// 状态快照（用于传感器，不含内部 skip 标志）
+#[derive(Debug, Clone, Default)]
+pub struct TankStatusSummary {
+    pub shielded:    bool,
+    pub frozen:      bool,
+    pub stunned:     bool,
+    pub overloaded:  bool,
+    pub cloaked:     bool,
+    pub poisoned:    bool,
+    pub boosted:     bool,
+    pub fire_locked: bool,
 }
 
 // ─── 数据结构 ─────────────────────────────────────────────────────────────
@@ -139,6 +241,9 @@ pub struct TankSummary {
     pub score: u32,
     pub shoot_cooldown: u32,
     pub team_id: usize,
+    pub skill_type: SkillType,
+    pub skill_cooldown: u32,
+    pub status: TankStatusSummary,
 }
 
 pub struct TankState {
@@ -153,10 +258,13 @@ pub struct TankState {
     pub score: u32,
     pub command_queue: VecDeque<TankCommand>,
     pub team_id: usize,
+    pub skill_type: SkillType,
+    pub skill_cooldown: u32,
+    pub status: TankStatus,
 }
 
 impl TankState {
-    pub fn new(id: usize, name: &str, x: usize, y: usize, facing: Facing, team_id: usize) -> Self {
+    pub fn new(id: usize, name: &str, x: usize, y: usize, facing: Facing, team_id: usize, skill_type: SkillType) -> Self {
         Self {
             id, name: name.to_string(),
             x, y, facing,
@@ -166,6 +274,9 @@ impl TankState {
             score: 0,
             command_queue: VecDeque::new(),
             team_id,
+            skill_type,
+            skill_cooldown: 0,
+            status: TankStatus::default(),
         }
     }
 
@@ -175,6 +286,18 @@ impl TankState {
             facing: self.facing, hp: self.hp, alive: self.alive,
             score: self.score, shoot_cooldown: self.shoot_cooldown,
             team_id: self.team_id,
+            skill_type: self.skill_type.clone(),
+            skill_cooldown: self.skill_cooldown,
+            status: TankStatusSummary {
+                shielded:    self.status.shielded    > 0,
+                frozen:      self.status.frozen      > 0,
+                stunned:     self.status.stunned     > 0,
+                overloaded:  self.status.overloaded,
+                cloaked:     self.status.cloaked     > 0,
+                poisoned:    self.status.poisoned    > 0,
+                boosted:     self.status.boosted     > 0,
+                fire_locked: self.status.fire_locked > 0,
+            },
         }
     }
 
@@ -220,6 +343,7 @@ pub struct EnemySensor {
     pub y: usize,
     pub facing: Facing,
     pub hp: i32,
+    pub status: TankStatusSummary,
 }
 
 #[derive(Clone)]
@@ -241,27 +365,29 @@ pub struct BulletSensor {
 
 // ─── 地图 ─────────────────────────────────────────────────────────────────
 
-// 180° 旋转对称地图：map[r][c] == map[19-r][19-c]，保证对角出生公平
+// 180° 旋转对称地图（所有行均为回文，整体自对称）
+// 三通道结构：左通道(col1-6)、中通道(col8-11)、右通道(col13-18)
+// 门柱墙(col7,col12)制造 chokepoint，中心土堆可被摧毁
 const MAP_STR: &[&str] = &[
-    "xxxxxxxxxxxxxxxxxxxx",  //  0
-    "x..................x",  //  1
-    "x.xx............xx.x",  //  2  角落矮墙（自对称）
+    "xxxxxxxxxxxxxxxxxxxx",  //  0  外墙
+    "x..................x",  //  1  出生行：(1,1)East / (18,1)West
+    "x.xx............xx.x",  //  2  角落掩体
     "x..................x",  //  3
-    "x..ooo............x",  //  4  左上草丛
-    "x..ooo............x",  //  5
-    "xxx................x",  //  6  左侧凸出墙
-    "x.......mm.........x",  //  7  土堆（左偏）
-    "x..........mm......x",  //  8  土堆（右偏）
-    "x........mm........x",  //  9  中心土堆（自对称）
-    "x........mm........x",  // 10  mirror of  9
-    "x......mm..........x",  // 11  mirror of  8
-    "x.........mm.......x",  // 12  mirror of  7
-    "x................xxx",  // 13  mirror of  6
-    "x.............ooo..x",  // 14  mirror of  5
-    "x.............ooo..x",  // 15  mirror of  4（右下草丛）
-    "x..................x",  // 16  mirror of  3
-    "x.xx............xx.x",  // 17  mirror of  2（自对称）
-    "x..................x",  // 18  mirror of  1
+    "x.ooo..........ooo.x",  //  4  草丛（col2-4 / col15-17），靠近出生点
+    "x.ooo..........ooo.x",  //  5
+    "x..................x",  //  6
+    "x......x....x......x",  //  7  门柱 col7 / col12
+    "x......x.mm.x......x",  //  8  门柱 + 中央土堆缝隙
+    "x.......mmmm.......x",  //  9  中心土堆群
+    "x.......mmmm.......x",  // 10
+    "x......x.mm.x......x",  // 11
+    "x......x....x......x",  // 12
+    "x..................x",  // 13
+    "x.ooo..........ooo.x",  // 14
+    "x.ooo..........ooo.x",  // 15  出生行：(1,18)East / (18,18)West
+    "x..................x",  // 16
+    "x.xx............xx.x",  // 17
+    "x..................x",  // 18
     "xxxxxxxxxxxxxxxxxxxx",  // 19
 ];
 
@@ -304,10 +430,12 @@ pub fn compute_sensors(
     frame: u32,
     bullets: &[Bullet],
 ) -> SensorData {
-    // 敌人：存活 && team_id 不同
+    // 敌人：存活 && team_id 不同 && 未躲在草丛中 && 未处于隐身状态
     let mut enemies: Vec<EnemySensor> = others.iter()
-        .filter(|t| t.alive && t.team_id != me.team_id)
-        .map(|t| EnemySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp })
+        .filter(|t| t.alive && t.team_id != me.team_id
+                   && map[t.y][t.x] != Tile::Grass
+                   && !t.status.cloaked)
+        .map(|t| EnemySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp, status: t.status.clone() })
         .collect();
     // 按曼哈顿距离排序
     enemies.sort_by_key(|e| {

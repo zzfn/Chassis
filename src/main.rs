@@ -65,7 +65,7 @@ async fn main() {
     println!("参赛坦克: {}", raw_agents.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(" / "));
     println!();
 
-    let specs: Vec<(&str, &str)> = raw_agents.iter().map(|(n, c)| (n.as_str(), c.as_str())).collect();
+    let specs: Vec<(&str, &str, physics::SkillType)> = raw_agents.iter().map(|(n, c)| (n.as_str(), c.as_str(), physics::SkillType::Shield)).collect();
     let engine = match ArenaEngine::new(specs) {
         Ok(e) => { println!("[主程序] 初始化完成，开始仿真...\n"); e }
         Err(e) => { eprintln!("[主程序] 初始化失败: {}", e); std::process::exit(1); }

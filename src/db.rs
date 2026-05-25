@@ -41,6 +41,7 @@ async fn init_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     ensure_agents_table(pool).await?;
     ensure_api_keys_table(pool).await?;
     ensure_tankbook_posts_table(pool).await?;
+    ensure_shop_table(pool).await?;
     Ok(())
 }
 
@@ -184,6 +185,11 @@ pub async fn ensure_users_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+    sqlx::query(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INT NOT NULL DEFAULT 500"
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -249,17 +255,18 @@ pub struct UserProfile {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub is_admin:   bool,
     pub banned:     bool,
+    pub credits:    i32,
 }
 
 pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(r#"
-        SELECT u.id, u.username, u.email, u.created_at, u.is_admin, u.banned,
+        SELECT u.id, u.username, u.email, u.created_at, u.is_admin, u.banned, u.credits,
                COUNT(DISTINCT a.name) AS tank_count
         FROM users u
         LEFT JOIN agents a ON a.user_id = u.id
         WHERE u.id = $1
-        GROUP BY u.id, u.username, u.email, u.created_at, u.is_admin, u.banned
+        GROUP BY u.id, u.username, u.email, u.created_at, u.is_admin, u.banned, u.credits
     "#)
     .bind(user_id)
     .fetch_optional(pool)
@@ -272,7 +279,19 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
         created_at:  r.get("created_at"),
         is_admin:    r.get("is_admin"),
         banned:      r.get("banned"),
+        credits:     r.get("credits"),
     }))
+}
+
+pub async fn count_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT COUNT(DISTINCT name) AS cnt FROM agents WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get("cnt"))
 }
 
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRow>, sqlx::Error> {
@@ -506,7 +525,9 @@ pub struct TankDetail {
     pub pvp_wins: i64,
     pub pvp_losses: i64,
     pub pvp_battles: i64,
+    pub current_version: i64,
     pub battles: Vec<TankBattleRecord>,
+    pub skill_type: String,
 }
 
 /// 删除当前用户的坦克：清理同名的全部 agents 版本、皮肤、Elo、绑定密钥。
@@ -539,7 +560,7 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
     use sqlx::Row;
 
     let Some(a) = sqlx::query(
-        "SELECT a.id::text, a.name, a.code, a.created_at, a.user_id, u.username FROM agents a JOIN users u ON u.id = a.user_id WHERE a.id = $1"
+        "SELECT a.id::text, a.name, a.code, a.created_at, a.user_id, a.skill_type, u.username FROM agents a JOIN users u ON u.id = a.user_id WHERE a.id = $1"
     ).bind(agent_id).fetch_optional(pool).await? else { return Ok(None) };
 
     let user_id: Uuid = a.get("user_id");
@@ -574,6 +595,11 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
     ).bind(user_id).bind(&agent_name).fetch_optional(pool).await?
         .map(|r| r.get::<f64, _>("elo")).unwrap_or(1000.0);
 
+    let current_version: i64 = sqlx::query(
+        "SELECT COUNT(*) AS cnt FROM agents WHERE user_id = $1 AND name = $2"
+    ).bind(user_id).bind(&agent_name).fetch_one(pool).await?
+        .get("cnt");
+
     Ok(Some(TankDetail {
         agent_id: a.get("id"),
         agent_name,
@@ -584,7 +610,9 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
         pvp_wins,
         pvp_losses,
         pvp_battles: pvp_wins + pvp_losses,
+        current_version,
         battles,
+        skill_type: a.get::<String, _>("skill_type"),
     }))
 }
 
@@ -672,6 +700,8 @@ pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(pool).await?;
     sqlx::query("ALTER TABLE agents ADD COLUMN IF NOT EXISTS submitted_by TEXT")
         .execute(pool).await?;
+    sqlx::query("ALTER TABLE agents ADD COLUMN IF NOT EXISTS skill_type TEXT NOT NULL DEFAULT 'shield'")
+        .execute(pool).await?;
     sqlx::query("ALTER TABLE battles ADD COLUMN IF NOT EXISTS skins JSONB NOT NULL DEFAULT '{}'")
         .execute(pool).await?;
     sqlx::query(r#"
@@ -741,14 +771,125 @@ pub async fn get_skin_by_agent_id(pool: &PgPool, agent_id: Uuid) -> Result<Optio
     Ok(Some((user_id, name, skin)))
 }
 
-pub async fn create_agent(pool: &PgPool, user_id: Uuid, name: &str, code: &str, submitted_by: Option<&str>) -> Result<Uuid, sqlx::Error> {
+pub async fn create_agent(pool: &PgPool, user_id: Uuid, name: &str, code: &str, submitted_by: Option<&str>, skill_type: &str) -> Result<Uuid, sqlx::Error> {
     let id = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO agents (id, user_id, name, code, submitted_by) VALUES ($1, $2, $3, $4, $5)"
+        "INSERT INTO agents (id, user_id, name, code, submitted_by, skill_type) VALUES ($1, $2, $3, $4, $5, $6)"
     )
-    .bind(id).bind(user_id).bind(name).bind(code).bind(submitted_by)
+    .bind(id).bind(user_id).bind(name).bind(code).bind(submitted_by).bind(skill_type)
     .execute(pool).await?;
     Ok(id)
+}
+
+/// 修改某个坦克的技能类型
+pub async fn update_agent_skill(pool: &PgPool, agent_id: Uuid, skill_type: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE agents SET skill_type = $1 WHERE id = $2")
+        .bind(skill_type).bind(agent_id)
+        .execute(pool).await?;
+    Ok(())
+}
+
+/// 原子操作：扣除积分并返回新余额。余额不足返回 Err。
+pub async fn deduct_credits(pool: &PgPool, user_id: Uuid, amount: i32) -> Result<i32, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits"
+    )
+    .bind(amount).bind(user_id)
+    .fetch_optional(pool).await?;
+    match row {
+        Some(r) => Ok(r.get("credits")),
+        None    => Err(sqlx::Error::RowNotFound),  // 余额不足
+    }
+}
+
+/// 增加积分并返回新余额。
+pub async fn add_credits(pool: &PgPool, user_id: Uuid, amount: i32) -> Result<i32, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "UPDATE users SET credits = credits + $1 WHERE id = $2 RETURNING credits"
+    )
+    .bind(amount).bind(user_id)
+    .fetch_one(pool).await?;
+    Ok(row.get("credits"))
+}
+
+// ── 商店 ─────────────────────────────────────────────────────────────────────
+
+pub async fn ensure_shop_table(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS user_shop_items (
+            id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id   UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            item_type TEXT        NOT NULL,
+            item_id   TEXT        NOT NULL,
+            equipped  BOOLEAN     NOT NULL DEFAULT false,
+            bought_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(user_id, item_type, item_id)
+        )
+    "#).execute(pool).await?;
+    Ok(())
+}
+
+pub struct ShopItem {
+    pub item_type: String,
+    pub item_id:   String,
+    pub equipped:  bool,
+}
+
+/// 原子操作：扣除积分 + 购入道具。余额不足或道具不存在返回 Err。
+pub async fn buy_shop_item(pool: &PgPool, user_id: Uuid, item_type: &str, item_id: &str, price: i32) -> Result<i32, sqlx::Error> {
+    use sqlx::Row;
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits"
+    )
+    .bind(price).bind(user_id)
+    .fetch_optional(&mut *tx).await?;
+    let new_credits = match row {
+        Some(r) => r.get::<i32, _>("credits"),
+        None    => return Err(sqlx::Error::RowNotFound),
+    };
+    sqlx::query(
+        "INSERT INTO user_shop_items (user_id, item_type, item_id) VALUES ($1,$2,$3) ON CONFLICT (user_id,item_type,item_id) DO NOTHING"
+    )
+    .bind(user_id).bind(item_type).bind(item_id)
+    .execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(new_credits)
+}
+
+pub async fn get_shop_inventory(pool: &PgPool, user_id: Uuid) -> Result<Vec<ShopItem>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT item_type, item_id, equipped FROM user_shop_items WHERE user_id = $1 ORDER BY bought_at"
+    )
+    .bind(user_id)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| ShopItem {
+        item_type: r.get("item_type"),
+        item_id:   r.get("item_id"),
+        equipped:  r.get("equipped"),
+    }).collect())
+}
+
+/// 装备某个道具（同类型只能装备一件）。免费道具首次装备会自动插入记录。
+pub async fn equip_shop_item(pool: &PgPool, user_id: Uuid, item_type: &str, item_id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "UPDATE user_shop_items SET equipped = false WHERE user_id = $1 AND item_type = $2"
+    )
+    .bind(user_id).bind(item_type)
+    .execute(&mut *tx).await?;
+    sqlx::query(r#"
+        INSERT INTO user_shop_items (user_id, item_type, item_id, equipped)
+        VALUES ($1,$2,$3,true)
+        ON CONFLICT (user_id,item_type,item_id) DO UPDATE SET equipped = true
+    "#)
+    .bind(user_id).bind(item_type).bind(item_id)
+    .execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 pub struct AgentRow {
@@ -756,6 +897,7 @@ pub struct AgentRow {
     pub user_id: Uuid,
     pub name: String,
     pub code: String,
+    pub skill_type: String,
 }
 
 fn row_to_agent(r: &sqlx::postgres::PgRow) -> AgentRow {
@@ -765,12 +907,13 @@ fn row_to_agent(r: &sqlx::postgres::PgRow) -> AgentRow {
         user_id: r.get("user_id"),
         name: r.get("name"),
         code: r.get("code"),
+        skill_type: r.try_get("skill_type").unwrap_or_else(|_| "shield".to_string()),
     }
 }
 
 pub async fn get_latest_agent_by_name(pool: &PgPool, user_id: Uuid, name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, user_id, name, code FROM agents WHERE user_id = $1 AND name = $2 ORDER BY created_at DESC LIMIT 1"
+        "SELECT id, user_id, name, code, skill_type FROM agents WHERE user_id = $1 AND name = $2 ORDER BY created_at DESC LIMIT 1"
     )
     .bind(user_id).bind(name)
     .fetch_optional(pool).await?;
@@ -779,7 +922,7 @@ pub async fn get_latest_agent_by_name(pool: &PgPool, user_id: Uuid, name: &str) 
 
 pub async fn get_latest_agent_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT a.id, a.user_id, a.name, a.code FROM agents a WHERE a.user_id = $1 ORDER BY a.created_at DESC LIMIT 1"
+        "SELECT a.id, a.user_id, a.name, a.code, a.skill_type FROM agents a WHERE a.user_id = $1 ORDER BY a.created_at DESC LIMIT 1"
     )
     .bind(user_id)
     .fetch_optional(pool).await?;
@@ -788,7 +931,7 @@ pub async fn get_latest_agent_by_user_id(pool: &PgPool, user_id: Uuid) -> Result
 
 pub async fn get_agent_by_id(pool: &PgPool, agent_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT a.id, a.user_id, a.name, a.code FROM agents a WHERE a.id = $1"
+        "SELECT a.id, a.user_id, a.name, a.code, a.skill_type FROM agents a WHERE a.id = $1"
     )
     .bind(agent_id)
     .fetch_optional(pool).await?;
@@ -798,8 +941,8 @@ pub async fn get_agent_by_id(pool: &PgPool, agent_id: Uuid) -> Result<Option<Age
 /// 随机抽取多个其他用户的最新坦克，排除指定用户自己的坦克
 pub async fn get_random_agents(pool: &PgPool, exclude_user_id: Uuid, count: i64) -> Result<Vec<AgentRow>, sqlx::Error> {
     let rows = sqlx::query(r#"
-        SELECT id, user_id, name, code FROM (
-            SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code
+        SELECT id, user_id, name, code, skill_type FROM (
+            SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code, a.skill_type
             FROM agents a
             WHERE a.user_id != $1 AND a.code IS NOT NULL
             ORDER BY a.user_id, a.created_at DESC
@@ -816,8 +959,8 @@ pub async fn get_random_agents(pool: &PgPool, exclude_user_id: Uuid, count: i64)
 // 按 ELO 距离最近匹配对手（每个用户取最新提交的 agent）
 pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(r#"
-        SELECT id, user_id, name, code FROM (
-            SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code
+        SELECT id, user_id, name, code, skill_type FROM (
+            SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code, a.skill_type
             FROM agents a
             WHERE a.user_id != $1
             ORDER BY a.user_id, a.created_at DESC
@@ -1120,6 +1263,21 @@ pub async fn save_pvp_battle(
 
     upsert_elo(&mut tx, challenger_id, challenger_name, &new_ga).await?;
     upsert_elo(&mut tx, opponent_id,   opponent_name,   &new_gb).await?;
+
+    // ── 对战积分奖励 ──────────────────────────────────────────────────────────
+    const WIN_REWARD:         i32 = 50;
+    const PARTICIPATE_REWARD: i32 = 10;
+    let (ra, rb) = if result.winner == challenger_name {
+        (WIN_REWARD, PARTICIPATE_REWARD)
+    } else if result.winner == opponent_name {
+        (PARTICIPATE_REWARD, WIN_REWARD)
+    } else {
+        (PARTICIPATE_REWARD, PARTICIPATE_REWARD)
+    };
+    sqlx::query("UPDATE users SET credits = credits + $1 WHERE id = $2")
+        .bind(ra).bind(challenger_id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE users SET credits = credits + $1 WHERE id = $2")
+        .bind(rb).bind(opponent_id).execute(&mut *tx).await?;
 
     tx.commit().await?;
 

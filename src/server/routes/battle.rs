@@ -7,7 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{battle::{ArenaEngine, BattleResult}, db};
+use crate::{battle::{ArenaEngine, BattleResult}, db, physics::SkillType};
 use crate::server::{AppState, json_err, extract_user_id};
 
 #[derive(Deserialize)]
@@ -56,8 +56,8 @@ async fn handle_battle(
         let opponent_code = opponent_code.clone();
         move || -> Result<BattleResult, String> {
             let owned = vec![
-                (name.as_str(),     code.as_str()),
-                (opponent.as_str(), opponent_code.as_str()),
+                (name.as_str(),     code.as_str(),          SkillType::Shield),
+                (opponent.as_str(), opponent_code.as_str(), SkillType::Shield),
             ];
             let engine = ArenaEngine::new(owned)?;
             Ok(engine.run())

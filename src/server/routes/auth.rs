@@ -34,8 +34,9 @@ async fn handle_register(
     Json(req): Json<RegisterRequest>,
 ) -> impl IntoResponse {
     let pool = &state.pool;
-    if req.username.trim().is_empty() || req.email.trim().is_empty() || req.password.len() < 8 {
-        return json_err(400, "用户名和邮箱不能为空，密码至少 8 位");
+    if req.username.trim().is_empty() || req.email.trim().is_empty()
+        || req.password.len() < 8 || req.password.len() > 128 {
+        return json_err(400, "用户名和邮箱不能为空，密码长度 8-128 位");
     }
     let hash = match auth::hash_password(&req.password) {
         Ok(h)  => h,
@@ -87,6 +88,9 @@ async fn handle_login(
     };
     if !auth::verify_password(&req.password, &user.password_hash) {
         return json_err(401, "邮箱或密码错误");
+    }
+    if user.banned {
+        return json_err(403, "账户已被封禁");
     }
     if !user.email_verified {
         return json_err(403, "请先验证邮箱，检查你的收件箱");
@@ -155,6 +159,9 @@ async fn handle_verify_email(
     let pool = &state.pool;
     match db::consume_verification_token(pool, &q.token).await {
         Ok(Some(user)) => {
+            if user.banned {
+                return json_err(403, "账户已被封禁").into_response();
+            }
             let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
             axum::Json(AuthResponse { token, username: user.username }).into_response()
         }
@@ -178,6 +185,7 @@ async fn handle_me(
             "email":       p.email,
             "tank_count":  p.tank_count,
             "created_at":  p.created_at,
+            "credits":     p.credits,
         })).into_response(),
         Ok(None)    => json_err(404, "用户不存在"),
         Err(e)      => json_err(500, &e.to_string()),

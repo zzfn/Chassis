@@ -42,6 +42,8 @@ function print() {
 }
 var me = {
     tank: { position: [0,0], direction: "east", id: 0, crashed: false, hp: 100, score: 0, shootCooldown: 0 },
+    skill: { type: "shield", remainingCooldownFrames: 0 },
+    status: { shielded: false, overloaded: false, cloaked: false, boosted: false, fireLocked: false },
     go: function(n) {
         n = (typeof n === "number" && n >= 1) ? Math.min(Math.floor(n), 10) : 1;
         for (var i = 0; i < n; i++) __queue.push("move");
@@ -52,6 +54,14 @@ var me = {
     },
     fire: function() { __queue.push("fire"); },
     speak: function(text) {},
+    shield:   function() { __queue.push("skill:shield"); },
+    freeze:   function() { __queue.push("skill:freeze"); },
+    stun:     function() { __queue.push("skill:stun"); },
+    overload: function() { __queue.push("skill:overload"); },
+    cloak:    function() { __queue.push("skill:cloak"); },
+    poison:   function() { __queue.push("skill:poison"); },
+    boost:    function() { __queue.push("skill:boost"); },
+    teleport: function(x, y) { __queue.push("skill:teleport:" + Math.floor(x) + ":" + Math.floor(y)); },
     bullet: null,
 };
 var enemy = null;
@@ -151,6 +161,21 @@ impl QuickJsSandbox {
             me_tank.set("shootCooldown", sensors.me.shoot_cooldown as i32).map_err(|e| e.to_string())?;
             me_obj.set("tank", me_tank).map_err(|e| e.to_string())?;
 
+            // ── 更新 me.skill ────────────────────────────────────────────
+            let me_skill = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+            me_skill.set("type", sensors.me.skill_type.as_str()).map_err(|e| e.to_string())?;
+            me_skill.set("remainingCooldownFrames", sensors.me.skill_cooldown as i32).map_err(|e| e.to_string())?;
+            me_obj.set("skill", me_skill).map_err(|e| e.to_string())?;
+
+            // ── 更新 me.status ───────────────────────────────────────────
+            let me_status = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+            me_status.set("shielded",   sensors.me.status.shielded).map_err(|e| e.to_string())?;
+            me_status.set("overloaded", sensors.me.status.overloaded).map_err(|e| e.to_string())?;
+            me_status.set("cloaked",    sensors.me.status.cloaked).map_err(|e| e.to_string())?;
+            me_status.set("boosted",    sensors.me.status.boosted).map_err(|e| e.to_string())?;
+            me_status.set("fireLocked", sensors.me.status.fire_locked).map_err(|e| e.to_string())?;
+            me_obj.set("status", me_status).map_err(|e| e.to_string())?;
+
             // ── 子弹对象构造辅助闭包 ─────────────────────────────────────
             let make_bullet_obj = |b: &crate::physics::BulletSensor| -> Result<Object, String> {
                 let b_obj = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
@@ -181,6 +206,12 @@ impl QuickJsSandbox {
                 e_tank.set("direction", e.facing.as_str()).map_err(|e| e.to_string())?;
                 e_tank.set("hp", e.hp).map_err(|e| e.to_string())?;
                 enemy_obj.set("tank", e_tank).map_err(|e| e.to_string())?;
+                // ── enemy.status ─────────────────────────────────────────
+                let enemy_status = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+                enemy_status.set("frozen",  e.status.frozen).map_err(|e| e.to_string())?;
+                enemy_status.set("stunned", e.status.stunned).map_err(|e| e.to_string())?;
+                enemy_status.set("poisoned",e.status.poisoned).map_err(|e| e.to_string())?;
+                enemy_obj.set("status", enemy_status).map_err(|e| e.to_string())?;
                 // ── 设置 enemy.bullet（敌人发出的第一颗活跃子弹）────────────
                 let enemy_bullet = sensors.bullets.iter().find(|b| b.owner_id == e.id);
                 if let Some(b) = enemy_bullet {
@@ -282,6 +313,18 @@ impl QuickJsSandbox {
                     "turn_left"  => commands.push(TankCommand::TurnLeft),
                     "turn_right" => commands.push(TankCommand::TurnRight),
                     "fire"       => commands.push(TankCommand::Fire),
+                    s if s.starts_with("skill:teleport:") => {
+                        // 格式："skill:teleport:col:row"
+                        let parts: Vec<&str> = s.splitn(4, ':').collect();
+                        if parts.len() == 4 {
+                            if let (Ok(x), Ok(y)) = (parts[2].parse::<usize>(), parts[3].parse::<usize>()) {
+                                commands.push(TankCommand::UseSkill(Some((x, y))));
+                            }
+                        }
+                    }
+                    s if s.starts_with("skill:") => {
+                        commands.push(TankCommand::UseSkill(None));
+                    }
                     _ => {}
                 }
             }
