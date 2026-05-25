@@ -60,7 +60,6 @@ async fn agent_tank_context(
     .fetch_one(pool).await
     .map(|r| r.get::<i64, _>("cnt"))
     .unwrap_or(0);
-    use sqlx::Row as _;
     let elo: f64 = sqlx::query(
         "SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2"
     )

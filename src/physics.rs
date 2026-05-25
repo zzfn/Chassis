@@ -348,7 +348,6 @@ pub struct EnemySensor {
 
 #[derive(Clone)]
 pub struct AllySensor {
-    pub id: usize,
     pub x: usize,
     pub y: usize,
     pub facing: Facing,
@@ -445,7 +444,7 @@ pub fn compute_sensors(
     // 队友：存活 && team_id 相同 && id 不同
     let mut allies: Vec<AllySensor> = others.iter()
         .filter(|t| t.alive && t.team_id == me.team_id && t.id != me.id)
-        .map(|t| AllySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp })
+        .map(|t| AllySensor { x: t.x, y: t.y, facing: t.facing, hp: t.hp })
         .collect();
     // 按曼哈顿距离排序
     allies.sort_by_key(|a| {

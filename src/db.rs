@@ -218,7 +218,6 @@ pub struct UserRow {
     pub username: String,
     pub password_hash: String,
     pub email_verified: bool,
-    pub is_admin: bool,
     pub banned: bool,
 }
 
@@ -228,7 +227,7 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         r#"INSERT INTO users (username, email, password_hash)
            VALUES ($1, $2, $3)
            ON CONFLICT DO NOTHING
-           RETURNING id, username, password_hash, email_verified, is_admin, banned"#,
+           RETURNING id, username, password_hash, email_verified, banned"#,
     )
     .bind(user.username)
     .bind(user.email)
@@ -242,7 +241,6 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
         username: r.get("username"),
         password_hash: r.get("password_hash"),
         email_verified: r.get("email_verified"),
-        is_admin: r.get("is_admin"),
         banned: r.get("banned"),
     }))
 }
@@ -254,19 +252,18 @@ pub struct UserProfile {
     pub tank_count: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub is_admin:   bool,
-    pub banned:     bool,
     pub credits:    i32,
 }
 
 pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(r#"
-        SELECT u.id, u.username, u.email, u.created_at, u.is_admin, u.banned, u.credits,
+        SELECT u.id, u.username, u.email, u.created_at, u.is_admin, u.credits,
                COUNT(DISTINCT a.name) AS tank_count
         FROM users u
         LEFT JOIN agents a ON a.user_id = u.id
         WHERE u.id = $1
-        GROUP BY u.id, u.username, u.email, u.created_at, u.is_admin, u.banned, u.credits
+        GROUP BY u.id, u.username, u.email, u.created_at, u.is_admin, u.credits
     "#)
     .bind(user_id)
     .fetch_optional(pool)
@@ -278,7 +275,6 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
         tank_count:  r.get("tank_count"),
         created_at:  r.get("created_at"),
         is_admin:    r.get("is_admin"),
-        banned:      r.get("banned"),
         credits:     r.get("credits"),
     }))
 }
@@ -297,7 +293,7 @@ pub async fn count_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx:
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRow>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(
-        "SELECT id, username, password_hash, email_verified, is_admin, banned FROM users WHERE email = $1",
+        "SELECT id, username, password_hash, email_verified, banned FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -308,7 +304,6 @@ pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<Use
         username: r.get("username"),
         password_hash: r.get("password_hash"),
         email_verified: r.get("email_verified"),
-        is_admin: r.get("is_admin"),
         banned: r.get("banned"),
     }))
 }
@@ -814,17 +809,6 @@ pub async fn deduct_credits(pool: &PgPool, user_id: Uuid, amount: i32) -> Result
         Some(r) => Ok(r.get("credits")),
         None    => Err(sqlx::Error::RowNotFound),  // 余额不足
     }
-}
-
-/// 增加积分并返回新余额。
-pub async fn add_credits(pool: &PgPool, user_id: Uuid, amount: i32) -> Result<i32, sqlx::Error> {
-    use sqlx::Row;
-    let row = sqlx::query(
-        "UPDATE users SET credits = credits + $1 WHERE id = $2 RETURNING credits"
-    )
-    .bind(amount).bind(user_id)
-    .fetch_one(pool).await?;
-    Ok(row.get("credits"))
 }
 
 // ── 商店 ─────────────────────────────────────────────────────────────────────
@@ -1697,7 +1681,7 @@ pub async fn consume_verification_token(
 
     // 返回用户信息用于签发 JWT
     let user = sqlx::query(
-        "SELECT id, username, password_hash, email_verified, is_admin, banned FROM users WHERE id = $1",
+        "SELECT id, username, password_hash, email_verified, banned FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -1708,7 +1692,6 @@ pub async fn consume_verification_token(
         username:       r.get("username"),
         password_hash:  r.get("password_hash"),
         email_verified: r.get("email_verified"),
-        is_admin:       r.get("is_admin"),
         banned:         r.get("banned"),
     }))
 }

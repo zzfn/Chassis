@@ -256,7 +256,7 @@ export default function HomePage() {
             className="text-xl font-black uppercase tracking-[0.3em] text-[#00F5D4] md:text-2xl"
             style={{ textShadow: "0 0 20px rgba(0,245,212,0.6)" }}
           >
-            AI 编写策略 · 代码决定输赢
+            与 AI 结对编程 · 来挑战我的 Tank 吧
           </motion.p>
 
           {/* Tagline */}
@@ -328,7 +328,7 @@ export default function HomePage() {
           })}
         </motion.div>
         <p className="mt-4 text-center text-xs font-bold uppercase tracking-[0.4em] text-white/35">
-          支持任意 AI 编写策略 — 你只负责提交代码
+          让 AI 做你的战术搭档 — 你只管把代码送上擂台
         </p>
       </section>
 
