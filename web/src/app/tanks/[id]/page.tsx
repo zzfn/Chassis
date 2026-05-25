@@ -1137,7 +1137,7 @@ ${guideUrl}
           >
             <div
               ref={manageRef}
-              className="flex w-full max-w-2xl flex-col overflow-hidden border-4 border-black bg-[#FFFDF5] shadow-[16px_16px_0px_0px_#000]"
+              className="flex w-full max-w-2xl flex-col overflow-hidden border-4 border-black bg-[#FFFDF5] shadow-[16px_16px_0px_0px_#000] max-h-[90vh]"
             >
               {/* 模态头部 */}
               <div className="flex items-start justify-between gap-4 border-b-4 border-black bg-[#C4B5FD] p-5">
