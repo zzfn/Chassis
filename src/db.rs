@@ -624,6 +624,7 @@ pub struct AgentVersion {
     pub agent_id: String,
     pub code: String,
     pub submitted_by: Option<String>,
+    pub notes: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -638,7 +639,7 @@ pub async fn get_tank_versions(pool: &PgPool, agent_id: Uuid) -> Result<Option<V
     let name: String = row.get("name");
 
     let rows = sqlx::query(r#"
-        SELECT id::text AS agent_id, code, submitted_by, created_at,
+        SELECT id::text AS agent_id, code, submitted_by, notes, created_at,
                ROW_NUMBER() OVER (ORDER BY created_at ASC) AS version
         FROM agents
         WHERE user_id = $1 AND name = $2
@@ -650,6 +651,7 @@ pub async fn get_tank_versions(pool: &PgPool, agent_id: Uuid) -> Result<Option<V
         agent_id: r.get("agent_id"),
         code: r.get("code"),
         submitted_by: r.get("submitted_by"),
+        notes: r.get("notes"),
         created_at: r.get("created_at"),
     }).collect()))
 }
@@ -701,6 +703,8 @@ pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("ALTER TABLE agents ADD COLUMN IF NOT EXISTS submitted_by TEXT")
         .execute(pool).await?;
     sqlx::query("ALTER TABLE agents ADD COLUMN IF NOT EXISTS skill_type TEXT NOT NULL DEFAULT 'shield'")
+        .execute(pool).await?;
+    sqlx::query("ALTER TABLE agents ADD COLUMN IF NOT EXISTS notes TEXT")
         .execute(pool).await?;
     sqlx::query("ALTER TABLE battles ADD COLUMN IF NOT EXISTS skins JSONB NOT NULL DEFAULT '{}'")
         .execute(pool).await?;
@@ -771,12 +775,12 @@ pub async fn get_skin_by_agent_id(pool: &PgPool, agent_id: Uuid) -> Result<Optio
     Ok(Some((user_id, name, skin)))
 }
 
-pub async fn create_agent(pool: &PgPool, user_id: Uuid, name: &str, code: &str, submitted_by: Option<&str>, skill_type: &str) -> Result<Uuid, sqlx::Error> {
+pub async fn create_agent(pool: &PgPool, user_id: Uuid, name: &str, code: &str, submitted_by: Option<&str>, skill_type: &str, notes: Option<&str>) -> Result<Uuid, sqlx::Error> {
     let id = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO agents (id, user_id, name, code, submitted_by, skill_type) VALUES ($1, $2, $3, $4, $5, $6)"
+        "INSERT INTO agents (id, user_id, name, code, submitted_by, skill_type, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
-    .bind(id).bind(user_id).bind(name).bind(code).bind(submitted_by).bind(skill_type)
+    .bind(id).bind(user_id).bind(name).bind(code).bind(submitted_by).bind(skill_type).bind(notes)
     .execute(pool).await?;
     Ok(id)
 }

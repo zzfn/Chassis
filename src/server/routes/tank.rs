@@ -38,6 +38,7 @@ async fn submit_agent(
         None    => return json_err(400, "缺少 code 字段"),
     };
     let submitted_by = body.get("submitted_by").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let notes        = body.get("notes").and_then(|v| v.as_str()).map(|s| s.to_string());
 
     // 第一个坦克免费，后续每个消耗 NEW_TANK_COST 积分
     let tank_count = match db::count_user_tanks(pool, user_id).await {
@@ -64,7 +65,7 @@ async fn submit_agent(
         Ok(None)
     );
 
-    let agent_id = match db::create_agent(pool, user_id, &name, &code, submitted_by.as_deref(), &skill_type).await {
+    let agent_id = match db::create_agent(pool, user_id, &name, &code, submitted_by.as_deref(), &skill_type, notes.as_deref()).await {
         Ok(id) => id.to_string(),
         Err(e) => return json_err(500, &e.to_string()),
     };
@@ -217,6 +218,13 @@ async fn handle_challenge(
 
     let c_skill = SkillType::from_str(&challenger.skill_type);
     let o_skill = SkillType::from_str(&opponent.skill_type);
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试"),
+    };
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
@@ -273,7 +281,13 @@ async fn handle_matchmake(
     let opponent_user_id = opponent.user_id;
     let c_skill = SkillType::from_str(&challenger.skill_type);
     let o_skill = SkillType::from_str(&opponent.skill_type);
-
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试"),
+    };
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
@@ -347,7 +361,13 @@ async fn handle_matchmake_2v2(
     let a_skill  = SkillType::from_str(&others[0].skill_type);
     let b_skill  = SkillType::from_str(&others[1].skill_type);
     let cc_skill = SkillType::from_str(&others[2].skill_type);
-
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试"),
+    };
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         // 顺序：[0]=挑战者(team0), [1]=随机B(team1), [2]=随机A(team0), [3]=随机C(team1)
         // ArenaEngine 按 id%2 分队：偶数=team0, 奇数=team1

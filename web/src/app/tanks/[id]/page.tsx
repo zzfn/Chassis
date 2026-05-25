@@ -50,6 +50,7 @@ interface AgentVersion {
   agent_id: string
   code: string
   submitted_by: string | null
+  notes: string | null
   created_at: string
 }
 
@@ -1038,7 +1039,7 @@ ${guideUrl}
 
           {/* 版本记录 */}
           {bottomTab === "versions" && (
-            <div className="divide-y-4 divide-black">
+            <div className="max-h-[400px] overflow-y-auto divide-y-4 divide-black">
               {versionsLoading && (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm font-bold text-black/50">
                   <Loader2 className="size-4 animate-spin" /> 加载中...
@@ -1050,7 +1051,7 @@ ${guideUrl}
               {versions.map((v) => (
                 <div key={v.agent_id} className="border-b-4 border-black px-4 py-4 flex items-start gap-4">
                   <div className="flex flex-1 flex-col gap-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-black text-2xl">V{v.version}</span>
                       {v.submitted_by && (
                         <span className="flex items-center gap-1 border-2 border-black bg-[#C4B5FD] px-1.5 py-0.5 text-xs font-black">
@@ -1058,6 +1059,9 @@ ${guideUrl}
                         </span>
                       )}
                     </div>
+                    {v.notes && (
+                      <p className="text-sm font-bold text-black/80 leading-snug line-clamp-2">{v.notes}</p>
+                    )}
                     <span className="text-xs font-bold text-black/50">
                       {new Date(v.created_at).toLocaleString("zh-CN")}
                     </span>
@@ -1075,7 +1079,7 @@ ${guideUrl}
 
           {/* 对战历史 */}
           {bottomTab === "history" && (
-            <div className="divide-y-4 divide-black">
+            <div className="max-h-[400px] overflow-y-auto divide-y-4 divide-black">
               {tank.battles.length === 0 ? (
                 <p className="py-12 text-center text-sm font-bold text-black/40">暂无 PvP 对战记录</p>
               ) : tank.battles.map(battle => {
@@ -1433,16 +1437,21 @@ ${guideUrl}
           >
             {/* 弹窗标题栏 */}
             <div className="flex items-center justify-between border-b-4 border-black bg-[#C4B5FD] px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="font-black text-xl">V{viewingCode.version}</span>
-                {viewingCode.submitted_by && (
-                  <span className="border-2 border-black bg-white px-2 py-0.5 text-xs font-black">
-                    {AI_ICONS[viewingCode.submitted_by] ?? "🤖"} {viewingCode.submitted_by}
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-black text-xl">V{viewingCode.version}</span>
+                  {viewingCode.submitted_by && (
+                    <span className="border-2 border-black bg-white px-2 py-0.5 text-xs font-black">
+                      {AI_ICONS[viewingCode.submitted_by] ?? "🤖"} {viewingCode.submitted_by}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-black/60">
+                    {new Date(viewingCode.created_at).toLocaleString("zh-CN")}
                   </span>
+                </div>
+                {viewingCode.notes && (
+                  <p className="text-sm font-bold text-black/70 truncate">{viewingCode.notes}</p>
                 )}
-                <span className="text-xs font-bold text-black/60">
-                  {new Date(viewingCode.created_at).toLocaleString("zh-CN")}
-                </span>
               </div>
               <button
                 onClick={() => setViewingCode(null)}

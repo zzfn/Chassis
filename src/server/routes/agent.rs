@@ -98,7 +98,6 @@ async fn agent_tank_context(
 #[derive(Deserialize)]
 struct AgentCodeRequest {
     code: String,
-    #[allow(dead_code)]
     notes: Option<String>,
     #[serde(rename = "submittedBy")]
     submitted_by: Option<String>,
@@ -115,6 +114,7 @@ async fn agent_submit_code(
     };
     let name         = auth.agent_name;
     let code         = req.code;
+    let notes        = req.notes;
     let submitted_by = req.submitted_by;
 
     if name.is_empty() || name.len() > 32 {
@@ -124,7 +124,7 @@ async fn agent_submit_code(
         return json_err(400, "代码超过 64KB 上限");
     }
 
-    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref(), "shield").await {
+    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref(), "shield", notes.as_deref()).await {
         Ok(id) => {
             let version = db::get_agent_version_number(pool, auth.user_id, &name, id).await.unwrap_or(1);
             axum::Json(serde_json::json!({
@@ -362,7 +362,7 @@ async fn agent_challenge(
     let o_skill = SkillType::from_str(&opponent.skill_type);
 
     let _permit = match tokio::time::timeout(
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(15),
         state.battle_sem.acquire(),
     ).await {
         Ok(Ok(p)) => p,
@@ -438,7 +438,7 @@ async fn agent_simulate(
     let mirror = format!("{}_mirror", name);
     let code2 = code.clone();
     let _permit = match tokio::time::timeout(
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(15),
         state.battle_sem.acquire(),
     ).await {
         Ok(Ok(p)) => p,
