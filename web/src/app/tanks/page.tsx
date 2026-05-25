@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, Plus, Shield, Swords, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
@@ -97,7 +97,7 @@ function getEloTier(elo: number, battles: number) {
   return { label: "青铜", color: "#c2874f", border: "border-orange-800/60" }
 }
 
-export default function TanksPage() {
+function TanksContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [tanks, setTanks] = useState<Tank[]>([])
@@ -425,5 +425,13 @@ export default function TanksPage() {
       </AlertDialogContent>
     </AlertDialog>
     </>
+  )
+}
+
+export default function TanksPage() {
+  return (
+    <Suspense>
+      <TanksContent />
+    </Suspense>
   )
 }

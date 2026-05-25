@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, Search, Shuffle } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
@@ -80,7 +80,7 @@ function getRankTier(wins: number, battles: number) {
 const panelClass = "border border-zinc-800 bg-zinc-900 ring-0 p-5 gap-3 rounded-xl"
 const summaryCardClass = "border border-zinc-800 bg-zinc-900 ring-0 p-4 gap-2 rounded-xl"
 
-export default function ArenaPage() {
+function RaceContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -282,5 +282,13 @@ export default function ArenaPage() {
       {error && <p className="rounded-lg bg-red-950 px-4 py-2 text-sm text-red-400">{error}</p>}
 
     </main>
+  )
+}
+
+export default function ArenaPage() {
+  return (
+    <Suspense>
+      <RaceContent />
+    </Suspense>
   )
 }
