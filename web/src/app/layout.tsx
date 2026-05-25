@@ -22,8 +22,23 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "DeepTank",
-  description: "用代码驾驭坦克，让 AI 决定胜负",
+  title: {
+    default: "DeepTank",
+    template: "%s · DeepTank",
+  },
+  description: "用代码驾驭坦克，让 AI 决定胜负 — 在 Rust 引擎驱动的竞技场中，以 JavaScript 编写你的 AI 坦克参与 PVP 对战。",
+  keywords: ["AI", "坦克", "竞技场", "JavaScript", "编程", "对战"],
+  openGraph: {
+    type: "website",
+    siteName: "DeepTank",
+    title: "DeepTank — AI 坦克竞技场",
+    description: "用代码驾驭坦克，让 AI 决定胜负",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DeepTank — AI 坦克竞技场",
+    description: "用代码驾驭坦克，让 AI 决定胜负",
+  },
 }
 
 export default function RootLayout({
