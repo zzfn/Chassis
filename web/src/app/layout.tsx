@@ -1,12 +1,19 @@
 import { Suspense } from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Outfit, DM_Sans, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { Navbar } from "@/components/navbar"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
+  weight: ["700", "800", "900"],
+})
+
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
 })
 
 const geistMono = Geist_Mono({
@@ -27,9 +34,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${outfit.variable} ${dmSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-white">
+      <body className="min-h-full flex flex-col bg-[#0D0D1A] text-white">
         <Navbar />
         <Suspense>{children}</Suspense>
       </body>
