@@ -36,7 +36,7 @@ pub(crate) fn json_err(status: u16, msg: &str) -> axum::response::Response {
     axum::response::Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(axum::body::Body::from(format!("{{\"error\":\"{}\"}}", msg)))
+        .body(axum::body::Body::from(serde_json::json!({"error": msg}).to_string()))
         .unwrap()
 }
 

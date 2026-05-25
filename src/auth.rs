@@ -33,7 +33,7 @@ pub fn create_token(user_id: &str, username: &str, secret: &str) -> String {
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .unwrap_or_default()
+    .expect("JWT encode failed: invalid algorithm or key")
 }
 
 pub fn verify_token(token: &str, secret: &str) -> Option<Claims> {

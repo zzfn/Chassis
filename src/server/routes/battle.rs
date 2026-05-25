@@ -32,6 +32,14 @@ async fn handle_battle(
 ) -> impl IntoResponse {
     let pool = &state.pool;
 
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试").into_response(),
+    };
+
     if req.code.len() > 65_536 {
         return json_err(400, "代码长度不能超过 64 KB").into_response();
     }
@@ -82,14 +90,8 @@ async fn handle_battle(
                 .body(axum::body::Body::from(body))
                 .unwrap()
         }
-        Ok(Err(e)) => axum::response::Response::builder()
-            .status(500)
-            .body(axum::body::Body::from(format!("{{\"error\":\"{}\"}}", e)))
-            .unwrap(),
-        Err(e) => axum::response::Response::builder()
-            .status(500)
-            .body(axum::body::Body::from(format!("{{\"error\":\"{}\"}}", e)))
-            .unwrap(),
+        Ok(Err(e)) => json_err(500, &e).into_response(),
+        Err(e)     => json_err(500, &e.to_string()).into_response(),
     }
 }
 
