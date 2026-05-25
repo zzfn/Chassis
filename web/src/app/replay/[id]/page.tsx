@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX, Loader2, Trophy, Swords, Zap } from "lucide-react"
+import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX, Loader2, Trophy, Swords, Zap, Video } from "lucide-react"
 import * as PIXI from "pixi.js"
 
 // ── 数据类型 ──────────────────────────────────────────────────
@@ -292,13 +292,18 @@ interface PixiViewProps {
   seekFn: React.MutableRefObject<((idx: number) => void) | null>
   onTick: (idx: number) => void
   onEnd: () => void
+  onCanvasReady?: (canvas: HTMLCanvasElement) => void
 }
 
-function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
+function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady }: PixiViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // ── 坦克 sprite 映射 ──────────────────────────────────────
-  type TankSprites = { root: PIXI.Container; body: PIXI.Container }
+  type TankSprites = {
+    root: PIXI.Container; body: PIXI.Container; flash: PIXI.Graphics
+    hpBar: PIXI.Graphics; scoreText: PIXI.Text
+    _lastHp: number; _lastScore: number
+  }
   const tanks        = useRef<Map<number, TankSprites>>(new Map())
   const bullets      = useRef<PIXI.Graphics[]>([])
   const bulletStyles = useRef<string[]>([])   // 每个 bullet graphic 当前已绘制的样式 key
@@ -306,6 +311,12 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
   const bLayer       = useRef<PIXI.Container | null>(null)
   const sLayer       = useRef<PIXI.Container | null>(null)
   const moundSprites = useRef<Map<string, PIXI.Sprite>>(new Map())
+
+  // ── 命中特效 ──────────────────────────────────────────────
+  type Explosion = { x: number; y: number; g: PIXI.Graphics; t: number; color: number }
+  const hitFlashes   = useRef<Map<number, number>>(new Map())   // tank_id → elapsed_ms
+  const explosions   = useRef<Explosion[]>([])
+  const fxLayer      = useRef<PIXI.Container | null>(null)
 
   // owner_id → BulletStyleDef，从 skins 构建
   const ownerStyleMap = useRef<Map<number, BulletStyleDef>>(new Map())
@@ -343,6 +354,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
       autoDensity: true,
     })
     el.appendChild(app.view as HTMLCanvasElement)
+    onCanvasReady?.(app.view as HTMLCanvasElement)
 
     // ── 地图（SVG Sprite 贴图）───────────────────────────
     const mapC = new PIXI.Container()
@@ -371,6 +383,9 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
       })
     )
     app.stage.addChild(grassOverlay)
+
+    // 特效层：在草地覆盖层上方（命中闪光 / 爆炸粒子）
+    const fxL = new PIXI.Container(); app.stage.addChild(fxL); fxLayer.current = fxL
 
     // ── 坦克容器 ─────────────────────────────────────────
     data.telemetry[0]?.tanks.forEach(t => {
@@ -403,9 +418,34 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         body.addChild(g)
       }
 
+      // HP 条（不随 body 旋转，固定朝上）
+      const hpBar = new PIXI.Graphics()
+      hpBar.y = -TS * 0.58
+
+      // 分数（只在 score > 0 时可见）
+      const scoreText = new PIXI.Text('', new PIXI.TextStyle({
+        fontSize: 9, fill: 0xFFE600, fontFamily: 'monospace', fontWeight: 'bold',
+        dropShadow: true, dropShadowDistance: 1, dropShadowColor: 0x000000, dropShadowAlpha: 0.9,
+      }))
+      scoreText.anchor.set(0.5, 1)
+      scoreText.y = -TS * 0.6
+
+      // 命中闪光覆盖（在 body 上层，初始不可见）
+      const flash = new PIXI.Graphics()
+
       root.addChild(body)
+      root.addChild(hpBar)
+      root.addChild(scoreText)
+      root.addChild(flash)
       tankLayer.addChild(root)
-      tanks.current.set(t.id, { root, body })
+
+      // 初始绘制 HP 条
+      const initPct = Math.max(0, t.hp / 100)
+      const bw = TS * 0.7
+      hpBar.beginFill(0x000000, 0.45).drawRect(-bw / 2, 0, bw, 3).endFill()
+      hpBar.beginFill(0x4ade80, 0.9).drawRect(-bw / 2, 0, bw * initPct, 3).endFill()
+
+      tanks.current.set(t.id, { root, body, flash, hpBar, scoreText, _lastHp: t.hp, _lastScore: t.score })
     })
 
     // 边框
@@ -437,6 +477,11 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         curr.current = data.telemetry[si] ?? null
         bMatches.current = matchBullets(prev.current?.bullets ?? [], curr.current?.bullets ?? [])
         accum.current = MS_PER_TICK   // 立即定位到目标帧，alpha=1
+        // 清除 seek 跳跃残留的特效，并强制 HP/score 重绘
+        hitFlashes.current.clear()
+        tanks.current.forEach(sp => { sp.flash.clear(); sp._lastHp = -1; sp._lastScore = -1 })
+        explosions.current.forEach(ex => { ex.g.parent?.removeChild(ex.g); ex.g.destroy() })
+        explosions.current = []
         return                         // 本帧跳过推进，下帧再开始
       }
 
@@ -451,6 +496,24 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
             idx.current     = next
             accum.current  -= MS_PER_TICK
             bMatches.current = matchBullets(prev.current?.bullets ?? [], curr.current?.bullets ?? [])
+
+            // 命中检测：HP 下降 → 坦克闪光；子弹消失 → 爆炸粒子
+            if (prev.current && curr.current) {
+              prev.current.tanks.forEach(pt => {
+                const ct = curr.current!.tanks.find(x => x.id === pt.id)
+                if (ct && ct.hp < pt.hp) hitFlashes.current.set(pt.id, 0)
+              })
+              const currBulletIds = new Set(curr.current.bullets.map(b => b.id))
+              prev.current.bullets.forEach(b => {
+                if (!currBulletIds.has(b.id) && fxLayer.current) {
+                  const color = (ownerStyleMap.current.get(b.owner_id) ?? BULLET_STYLE_DEFS.default).color
+                  const g = new PIXI.Graphics()
+                  fxLayer.current.addChild(g)
+                  explosions.current.push({ x: b.x * S, y: b.y * S, g, t: 0, color })
+                }
+              })
+            }
+
             onTick(next)
           } else {
             accum.current  = MS_PER_TICK
@@ -480,12 +543,32 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         // 草地里的坦克由上方覆盖层遮挡，本体保持正常 alpha
         sp.root.alpha = t.alive ? 1 : 0.15
 
-        // 角度插值（处理 ±π 跳变）
+        // HP 条（只在 HP 变化时重绘，避免无效消耗）
+        if (sp._lastHp !== t.hp) {
+          sp._lastHp = t.hp
+          const pct = Math.max(0, t.hp / 100)
+          const bw  = TS * 0.7
+          const col = pct > 0.5 ? 0x4ade80 : pct > 0.25 ? 0xfbbf24 : 0xef4444
+          sp.hpBar.clear()
+          sp.hpBar.beginFill(0x000000, 0.45).drawRect(-bw / 2, 0, bw, 3).endFill()
+          if (pct > 0) sp.hpBar.beginFill(col, 0.9).drawRect(-bw / 2, 0, bw * pct, 3).endFill()
+        }
+        sp.hpBar.visible = t.alive
+
+        // 分数文字（只在变化时更新）
+        if (sp._lastScore !== t.score) {
+          sp._lastScore = t.score
+          sp.scoreText.text = t.score > 0 ? `★ ${t.score}` : ''
+        }
+        sp.scoreText.visible = t.alive && t.score > 0
+
+        // 角度插值（处理 ±π 跳变），用 ease-in-out 让转向更自然
+        const ea = alpha < 0.5 ? 2 * alpha * alpha : 1 - Math.pow(-2 * alpha + 2, 2) / 2
         const fa = pt ? pt.body_angle : t.body_angle
         let da = t.body_angle - fa
         if (da >  Math.PI) da -= Math.PI * 2
         if (da < -Math.PI) da += Math.PI * 2
-        sp.body.rotation = fa + da * alpha
+        sp.body.rotation = fa + da * ea
       })
 
       // 子弹
@@ -511,12 +594,61 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
           }
 
           const pb = bMatches.current[i]
-          const fx = pb ? pb.x * S : b.x * S
-          const fy = pb ? pb.y * S : b.y * S
+          // 新生成的子弹（pb=null）从炮主坦克位置飞出
+          const ownerSnap = pb ? null : c.tanks.find(t => t.id === b.owner_id)
+          const fx = pb ? pb.x * S : (ownerSnap ? ownerSnap.x * S : b.x * S)
+          const fy = pb ? pb.y * S : (ownerSnap ? ownerSnap.y * S : b.y * S)
           g.x = fx + (b.x * S - fx) * alpha
           g.y = fy + (b.y * S - fy) * alpha
         })
       }
+
+      // ── 命中闪光 ──────────────────────────────────────────
+      hitFlashes.current.forEach((elapsed, tid) => {
+        const sp = tanks.current.get(tid); if (!sp) return
+        const newElapsed = elapsed + dt
+        const progress   = newElapsed / 280   // 280ms 闪光周期
+        if (progress >= 1) {
+          hitFlashes.current.delete(tid)
+          sp.flash.clear()
+        } else {
+          hitFlashes.current.set(tid, newElapsed)
+          // 快速亮起（前 25%）→ 慢慢消散
+          const a = progress < 0.25 ? progress / 0.25 : 1 - (progress - 0.25) / 0.75
+          sp.flash.clear()
+          sp.flash.beginFill(0xff6600, a * 0.55).drawCircle(0, 0, TS * 0.42).endFill()
+          sp.flash.beginFill(0xffffff, a * 0.35).drawCircle(0, 0, TS * 0.22).endFill()
+        }
+      })
+
+      // ── 爆炸粒子 ──────────────────────────────────────────
+      explosions.current = explosions.current.filter(ex => {
+        ex.t += dt
+        const p = Math.min(ex.t / 380, 1)   // 380ms 寿命
+        if (p >= 1) {
+          ex.g.parent?.removeChild(ex.g)
+          ex.g.destroy()
+          return false
+        }
+        const inv = 1 - p
+        ex.g.clear()
+        ex.g.x = ex.x; ex.g.y = ex.y
+        // 外环扩散
+        ex.g.lineStyle(2.5 * inv, ex.color,        inv)
+            .drawCircle(0, 0, 4 + p * 14)
+        ex.g.lineStyle(1.5 * inv, 0xffffff,         inv * 0.6)
+            .drawCircle(0, 0, 4 + p * 20)
+        // 8 条闪光线
+        for (let i = 0; i < 8; i++) {
+          const ang  = (i / 8) * Math.PI * 2
+          const len  = p * 11
+          const cx   = Math.cos(ang); const cy = Math.sin(ang)
+          ex.g.lineStyle(1.2, 0xfef08a, inv * 0.9)
+              .moveTo(cx * 3, cy * 3)
+              .lineTo(cx * (3 + len), cy * (3 + len))
+        }
+        return true
+      })
 
       // 土堆摧毁
       const dm = c.destroyed_mounds ?? []
@@ -565,15 +697,19 @@ export default function ReplayPage() {
   const { id } = useParams<{ id: string }>()
   const router  = useRouter()
 
-  const [data,     setData]     = useState<BattleResult | null>(null)
-  const [err,      setErr]      = useState<string | null>(null)
-  const [frameIdx, setFrameIdx] = useState(0)
-  const [playing,  setPlaying]  = useState(false)
-  const [bgm,      setBgm]      = useState(true)
-  const [loadedAt]              = useState(() => new Date())
+  const [data,      setData]      = useState<BattleResult | null>(null)
+  const [err,       setErr]       = useState<string | null>(null)
+  const [frameIdx,  setFrameIdx]  = useState(0)
+  const [playing,   setPlaying]   = useState(false)
+  const [bgm,       setBgm]       = useState(true)
+  const [recording, setRecording] = useState(false)
+  const [loadedAt]                = useState(() => new Date())
 
-  const seekFn  = useRef<((idx: number) => void) | null>(null)
-  const sfxDone = useRef(false)
+  const seekFn        = useRef<((idx: number) => void) | null>(null)
+  const sfxDone       = useRef(false)
+  const pixiCanvas    = useRef<HTMLCanvasElement | null>(null)
+  const mediaRecorder = useRef<MediaRecorder | null>(null)
+  const recordChunks  = useRef<Blob[]>([])
 
   useBGM(playing && bgm)
 
@@ -597,6 +733,49 @@ export default function ReplayPage() {
   }
   function handleReset() {
     setPlaying(false); seekFn.current?.(0); setFrameIdx(0); sfxDone.current = false
+  }
+
+  function handleDownloadVideo() {
+    if (!data || !pixiCanvas.current || recording) return
+
+    const canvas = pixiCanvas.current
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : MediaRecorder.isTypeSupported('video/webm')
+      ? 'video/webm'
+      : 'video/mp4'
+
+    // 重置到第0帧，从头录制
+    seekFn.current?.(0)
+    setFrameIdx(0)
+    sfxDone.current = false
+
+    const stream = canvas.captureStream(30)
+    const recorder = new MediaRecorder(stream, { mimeType })
+    recordChunks.current = []
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordChunks.current.push(e.data)
+    }
+
+    recorder.onstop = () => {
+      const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm'
+      const blob = new Blob(recordChunks.current, { type: mimeType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `replay-${id}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setRecording(false)
+    }
+
+    mediaRecorder.current = recorder
+    recorder.start(100)
+    setRecording(true)
+    setPlaying(true)
   }
 
   const total  = data?.telemetry.length ?? 0
@@ -891,6 +1070,17 @@ export default function ReplayPage() {
               >
                 {bgm ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
               </button>
+              <button
+                onClick={handleDownloadVideo}
+                disabled={recording}
+                title={recording ? "录制中…" : "下载视频"}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-[#FFE600]/70 text-[#FFE600] transition-all duration-150 hover:bg-[#FFE600]/15 hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
+              >
+                {recording
+                  ? <Loader2 className="size-3.5 animate-spin" />
+                  : <Video className="size-3.5" />
+                }
+              </button>
             </div>
 
             {/* Canvas with Maximalism border */}
@@ -901,9 +1091,13 @@ export default function ReplayPage() {
               <PixiView
                 data={data} playing={playing}
                 seekFn={seekFn}
+                onCanvasReady={(c) => { pixiCanvas.current = c }}
                 onTick={setFrameIdx}
                 onEnd={() => {
                   setPlaying(false)
+                  if (mediaRecorder.current?.state === 'recording') {
+                    mediaRecorder.current.stop()
+                  }
                   if (bgm && !sfxDone.current && !data.timed_out) {
                     sfxDone.current = true
                     const won = is2v2
@@ -930,21 +1124,35 @@ export default function ReplayPage() {
               </div>
               <div className="flex flex-col divide-y-2 divide-dashed divide-[#00F5D4]/20 px-4">
                 {data.telemetry[frameIdx]?.tanks.map((t, i) => {
-                  const col = TEAM_COLORS[(t.team_id ?? i) % 2]
+                  const col    = TEAM_COLORS[(t.team_id ?? i) % 2]
+                  const hpPct  = Math.max(0, t.hp / 100)
+                  const hpCol  = hpPct > 0.5 ? '#4ade80' : hpPct > 0.25 ? '#fbbf24' : '#ef4444'
                   return (
-                    <div key={t.id} className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2.5 rounded-full" style={{ background: col, boxShadow: `0 0 6px ${col}` }} />
-                        <span className="text-sm font-black text-white">{t.name}</span>
+                    <div key={t.id} className="flex flex-col gap-1.5 py-3">
+                      {/* 名字行 */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="size-2.5 shrink-0 rounded-full" style={{ background: col, boxShadow: `0 0 6px ${col}` }} />
+                          <span className="truncate text-sm font-black text-white">{t.name}</span>
+                        </div>
+                        <span className="shrink-0 font-mono text-xs font-black" style={{ color: '#FFE600' }}>
+                          ★ {t.score}
+                        </span>
                       </div>
-                      <span
-                        className="rounded-full border-2 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide"
-                        style={t.alive
-                          ? { borderColor: "#00F5D4", color: "#00F5D4", background: "rgba(0,245,212,0.12)" }
-                          : { borderColor: "#4b5563", color: "#4b5563" }
-                        }
-                      >
-                        {t.alive ? "存活" : "摧毁"}
+                      {/* HP 条 */}
+                      <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-150"
+                          style={{
+                            width: t.alive ? `${hpPct * 100}%` : '100%',
+                            background: t.alive ? hpCol : '#374151',
+                            boxShadow: t.alive ? `0 0 5px ${hpCol}` : 'none',
+                          }}
+                        />
+                      </div>
+                      {/* HP 数值 */}
+                      <span className="text-[10px] font-black tabular-nums" style={{ color: t.alive ? hpCol : '#4b5563' }}>
+                        {t.alive ? `${t.hp} / 100 HP` : '已摧毁'}
                       </span>
                     </div>
                   )
