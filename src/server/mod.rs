@@ -4,7 +4,8 @@ mod routes;
 
 use axum::{
     http::{HeaderValue, Method},
-    Router,
+    routing::get,
+    Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
@@ -144,6 +145,7 @@ pub async fn serve(port: u16) {
         .allow_headers(tower_http::cors::Any);
 
     let app = Router::new()
+        .route("/", get(|| async { Json(serde_json::json!({ "name": "DeepTank API", "status": "ok" })) }))
         .merge(routes::battle::router())
         .merge(routes::auth::router())
         .merge(routes::tank::router())
