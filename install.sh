@@ -184,8 +184,32 @@ ENVEOF
   success ".env 已写入 $ENV_FILE"
 
 else
-  info ".env 已存在，跳过配置向导（如需重新配置请删除 $ENV_FILE）"
+  info ".env 已存在，检查必要字段..."
   SETUP_DB="n"
+
+  # 检查 DATABASE_URL
+  if ! grep -q '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
+    warn "DATABASE_URL 缺失，请填写"
+    echo "  格式：postgres://用户名:密码@主机:端口/数据库名"
+    _db_url="$(ask "DATABASE_URL" "postgres://deeptank:deeptank@localhost:5432/deeptank")"
+    echo "DATABASE_URL=${_db_url}" >> "$ENV_FILE"
+    success "DATABASE_URL 已补写"
+  fi
+
+  # 检查 JWT_SECRET
+  if ! grep -q '^JWT_SECRET=' "$ENV_FILE" 2>/dev/null; then
+    warn "JWT_SECRET 缺失，自动生成"
+    echo "JWT_SECRET=$(gen_secret)" >> "$ENV_FILE"
+    success "JWT_SECRET 已补写"
+  fi
+
+  # 检查 PORT
+  if ! grep -q '^PORT=' "$ENV_FILE" 2>/dev/null; then
+    _port="$(ask "PORT（.env 中缺失）" "3001")"
+    echo "PORT=${_port}" >> "$ENV_FILE"
+    success "PORT 已补写"
+  fi
+
   ENGINE_PORT="$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d ' ')"
   ENGINE_PORT="${ENGINE_PORT:-3001}"
 fi
