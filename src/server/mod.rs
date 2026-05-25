@@ -3,7 +3,7 @@
 mod routes;
 
 use axum::{
-    http::{HeaderValue, Method},
+    http::Method,
     routing::get,
     Json, Router,
 };
@@ -137,10 +137,7 @@ pub async fn serve(port: u16) {
     let state = AppState { pool, jwt_secret };
 
     let cors = CorsLayer::new()
-        .allow_origin([
-            "http://localhost:3000".parse::<HeaderValue>().unwrap(),
-            "http://localhost:3001".parse::<HeaderValue>().unwrap(),
-        ])
+        .allow_origin(tower_http::cors::Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any);
 
