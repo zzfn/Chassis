@@ -226,6 +226,36 @@ pub async fn create_user(pool: &PgPool, user: NewUser<'_>) -> Result<Option<User
     }))
 }
 
+pub struct UserProfile {
+    pub id:       Uuid,
+    pub username: String,
+    pub email:    String,
+    pub tank_count: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(r#"
+        SELECT u.id, u.username, u.email, u.created_at,
+               COUNT(DISTINCT a.name) AS tank_count
+        FROM users u
+        LEFT JOIN agents a ON a.user_id = u.id
+        WHERE u.id = $1
+        GROUP BY u.id, u.username, u.email, u.created_at
+    "#)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| UserProfile {
+        id:          r.get("id"),
+        username:    r.get("username"),
+        email:       r.get("email"),
+        tank_count:  r.get("tank_count"),
+        created_at:  r.get("created_at"),
+    }))
+}
+
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRow>, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(
@@ -379,6 +409,7 @@ pub struct UserTankEntry {
     pub pvp_losses: i64,
     pub elo: f64,
     pub skin: TankSkin,
+    pub version: i64,
 }
 
 /// 每个坦克名取最新提交，附带绑定的密钥、PvP 聚合（战绩 + Elo）与皮肤
@@ -391,10 +422,12 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
                COUNT(b.id) FILTER (WHERE b.winner = sub.agent_name)  AS pvp_wins,
                COUNT(b.id) FILTER (WHERE b.winner != sub.agent_name) AS pvp_losses,
                COALESCE(er.elo, 1000.0)                       AS elo,
-               COALESCE(ts.skin, '{}'::jsonb)                 AS skin
+               COALESCE(ts.skin, '{}'::jsonb)                 AS skin,
+               sub.version                                    AS version
         FROM (
             SELECT DISTINCT ON (name)
-                id::text AS agent_id, name AS agent_name, created_at, user_id
+                id::text AS agent_id, name AS agent_name, created_at, user_id,
+                (SELECT COUNT(*) FROM agents a2 WHERE a2.user_id = $1 AND a2.name = agents.name) AS version
             FROM agents
             WHERE user_id = $1
             ORDER BY name, created_at DESC
@@ -407,7 +440,7 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
         )
         LEFT JOIN elo_ratings er ON er.user_id = sub.user_id AND er.agent_name = sub.agent_name
         LEFT JOIN tank_skins  ts ON ts.user_id = sub.user_id AND ts.agent_name = sub.agent_name
-        GROUP BY sub.agent_id, sub.agent_name, sub.created_at, k.id, k.key, er.elo, ts.skin
+        GROUP BY sub.agent_id, sub.agent_name, sub.created_at, k.id, k.key, er.elo, ts.skin, sub.version
         ORDER BY sub.created_at DESC
     "#).bind(user_id).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| {
@@ -424,6 +457,7 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
             pvp_losses:  r.get("pvp_losses"),
             elo:         r.get("elo"),
             skin,
+            version:     r.get("version"),
         }
     }).collect())
 }
@@ -571,6 +605,19 @@ pub async fn get_tank_versions(pool: &PgPool, agent_id: Uuid) -> Result<Option<V
     }).collect()))
 }
 
+pub async fn get_agent_version_number(pool: &PgPool, user_id: Uuid, name: &str, agent_id: Uuid) -> Result<i64, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(r#"
+        SELECT version FROM (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) AS version
+            FROM agents WHERE user_id = $1 AND name = $2
+        ) v WHERE id = $3
+    "#)
+    .bind(user_id).bind(name).bind(agent_id)
+    .fetch_optional(pool).await?;
+    Ok(row.map(|r| r.get::<i64, _>("version")).unwrap_or(1))
+}
+
 pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 若旧表存在（user_id 为主键），先删掉重建
     sqlx::query(r#"
@@ -624,6 +671,10 @@ pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
             PRIMARY KEY (user_id, agent_name)
         )
     "#).execute(pool).await?;
+    sqlx::query("ALTER TABLE elo_ratings ADD COLUMN IF NOT EXISTS rd         DOUBLE PRECISION NOT NULL DEFAULT 350")
+        .execute(pool).await?;
+    sqlx::query("ALTER TABLE elo_ratings ADD COLUMN IF NOT EXISTS volatility DOUBLE PRECISION NOT NULL DEFAULT 0.06")
+        .execute(pool).await?;
     Ok(())
 }
 
@@ -723,8 +774,8 @@ pub async fn get_agent_by_id(pool: &PgPool, agent_id: Uuid) -> Result<Option<Age
     Ok(row.as_ref().map(row_to_agent))
 }
 
-// 随机取一个不属于 exclude_user_id 的 agent（每个用户取最新提交的）
-pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
+// 按 ELO 距离最近匹配对手（每个用户取最新提交的 agent）
+pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(r#"
         SELECT id, user_id, name, code FROM (
             SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code
@@ -732,10 +783,14 @@ pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid) -> Result
             WHERE a.user_id != $1
             ORDER BY a.user_id, a.created_at DESC
         ) latest
-        ORDER BY RANDOM()
+        ORDER BY ABS(
+            COALESCE((SELECT elo FROM elo_ratings WHERE user_id = latest.user_id AND agent_name = latest.name), 1000.0)
+            - COALESCE((SELECT elo FROM elo_ratings WHERE user_id = $1   AND agent_name = $2),                  1000.0)
+        ), RANDOM()
         LIMIT 1
     "#)
     .bind(exclude_user_id)
+    .bind(agent_name)
     .fetch_optional(pool).await?;
     Ok(row.as_ref().map(row_to_agent))
 }
@@ -749,6 +804,7 @@ pub struct PlayerEntry {
     pub pvp_wins: i64,
     pub pvp_losses: i64,
     pub elo: f64,
+    pub version: i64,
 }
 
 pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<PlayerEntry>, sqlx::Error> {
@@ -761,9 +817,11 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             COUNT(b.id)                                         AS pvp_battles,
             COUNT(b.id) FILTER (WHERE b.winner = la.name)      AS pvp_wins,
             COUNT(b.id) FILTER (WHERE b.winner != la.name)     AS pvp_losses,
-            COALESCE(er.elo, 1000.0)                            AS elo
+            COALESCE(er.elo, 1000.0)                            AS elo,
+            la.version                                          AS version
         FROM (
-            SELECT DISTINCT ON (user_id, name) id, user_id, name
+            SELECT DISTINCT ON (user_id, name) id, user_id, name,
+                (SELECT COUNT(*) FROM agents a2 WHERE a2.user_id = agents.user_id AND a2.name = agents.name) AS version
             FROM agents
             ORDER BY user_id, name, created_at DESC
         ) la
@@ -776,17 +834,18 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             (b.opponent_id  = la.user_id AND b.opponent   = la.name)
           )
         LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
-        GROUP BY la.id, la.name, u.username, er.elo
+        GROUP BY la.id, la.name, u.username, er.elo, la.version
         ORDER BY elo DESC, pvp_wins DESC, pvp_battles DESC
     "#).bind(since).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| PlayerEntry {
-        agent_id: r.get("agent_id"),
-        agent_name: r.get("agent_name"),
-        owner: r.get("owner"),
+        agent_id:    r.get("agent_id"),
+        agent_name:  r.get("agent_name"),
+        owner:       r.get("owner"),
         pvp_battles: r.get("pvp_battles"),
-        pvp_wins: r.get("pvp_wins"),
-        pvp_losses: r.get("pvp_losses"),
-        elo: r.get("elo"),
+        pvp_wins:    r.get("pvp_wins"),
+        pvp_losses:  r.get("pvp_losses"),
+        elo:         r.get("elo"),
+        version:     r.get("version"),
     }).collect())
 }
 
@@ -833,40 +892,108 @@ pub async fn search_opponents(
                COUNT(b.id) AS pvp_battles,
                COUNT(b.id) FILTER (WHERE b.winner = la.name) AS pvp_wins,
                COUNT(b.id) FILTER (WHERE b.winner != la.name) AS pvp_losses,
-               COALESCE(er.elo, 1000.0) AS elo
-        FROM (SELECT DISTINCT ON (user_id, name) id, user_id, name FROM agents ORDER BY user_id, name, created_at DESC) la
+               COALESCE(er.elo, 1000.0) AS elo,
+               la.version AS version
+        FROM (
+            SELECT DISTINCT ON (user_id, name) id, user_id, name,
+                (SELECT COUNT(*) FROM agents a2 WHERE a2.user_id = agents.user_id AND a2.name = agents.name) AS version
+            FROM agents ORDER BY user_id, name, created_at DESC
+        ) la
         JOIN users u ON u.id = la.user_id
         LEFT JOIN battles b ON b.challenger_id IS NOT NULL AND (
             (b.challenger_id = la.user_id AND b.agent_name = la.name)
             OR (b.opponent_id = la.user_id AND b.opponent = la.name))
         LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
         WHERE ($1::text IS NULL OR LOWER(la.name) LIKE $1 OR LOWER(u.username) LIKE $1)
-        GROUP BY la.id, la.name, u.username, er.elo
+        GROUP BY la.id, la.name, u.username, er.elo, la.version
         ORDER BY elo DESC LIMIT $2
     "#).bind(pattern).bind(limit).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| PlayerEntry {
-        agent_id: r.get("agent_id"),
-        agent_name: r.get("agent_name"),
-        owner: r.get("owner"),
+        agent_id:    r.get("agent_id"),
+        agent_name:  r.get("agent_name"),
+        owner:       r.get("owner"),
         pvp_battles: r.get("pvp_battles"),
-        pvp_wins: r.get("pvp_wins"),
-        pvp_losses: r.get("pvp_losses"),
-        elo: r.get("elo"),
+        pvp_wins:    r.get("pvp_wins"),
+        pvp_losses:  r.get("pvp_losses"),
+        elo:         r.get("elo"),
+        version:     r.get("version"),
     }).collect())
+}
+
+// ── Glicko-2 ─────────────────────────────────────────────────────────────────
+
+const GLICKO_SCALE: f64 = 173.7178;
+const GLICKO_BASE:  f64 = 1000.0;
+const GLICKO_TAU:   f64 = 0.5;    // 系统波动约束，越小越稳
+const GLICKO_EPS:   f64 = 1e-6;
+
+struct Glicko2 { rating: f64, rd: f64, volatility: f64 }
+
+impl Glicko2 {
+    fn new_player() -> Self { Self { rating: GLICKO_BASE, rd: 350.0, volatility: 0.06 } }
+
+    /// 单场对战后更新分数（score: 1=赢 0=输）
+    fn update(&self, opp: &Glicko2, score: f64) -> Glicko2 {
+        let mu    = (self.rating - GLICKO_BASE) / GLICKO_SCALE;
+        let phi   = self.rd / GLICKO_SCALE;
+        let mu_j  = (opp.rating - GLICKO_BASE) / GLICKO_SCALE;
+        let phi_j = opp.rd / GLICKO_SCALE;
+
+        let g  = 1.0 / (1.0 + 3.0 * phi_j * phi_j / (std::f64::consts::PI * std::f64::consts::PI)).sqrt();
+        let e  = 1.0 / (1.0 + (-g * (mu - mu_j)).exp());
+        let v  = 1.0 / (g * g * e * (1.0 - e));
+        let delta = v * g * (score - e);
+
+        // Illinois 算法求新波动率 σ'
+        let a = self.volatility.ln();
+        let f = |x: f64| -> f64 {
+            let ex  = x.exp();
+            let top = ex * (delta * delta - phi * phi - v - ex);
+            let bot = 2.0 * (phi * phi + v + ex).powi(2);
+            top / bot - (x - a) / (GLICKO_TAU * GLICKO_TAU)
+        };
+        let mut big_a = a;
+        let mut big_b = if delta * delta > phi * phi + v {
+            (delta * delta - phi * phi - v).ln()
+        } else {
+            let mut k = 1.0_f64;
+            while f(a - k * GLICKO_TAU) < 0.0 { k += 1.0; }
+            a - k * GLICKO_TAU
+        };
+        let (mut fa, mut fb) = (f(big_a), f(big_b));
+        while (big_b - big_a).abs() > GLICKO_EPS {
+            let big_c = big_a + (big_a - big_b) * fa / (fb - fa);
+            let fc = f(big_c);
+            if fc * fb <= 0.0 { big_a = big_b; fa = fb; } else { fa /= 2.0; }
+            big_b = big_c; fb = fc;
+        }
+        let new_vol = big_a.exp(); // a = ln(σ)，故 σ' = e^A（非 e^(A/2)）
+
+        let phi_star = (phi * phi + new_vol * new_vol).sqrt();
+        let new_phi  = 1.0 / (1.0 / (phi_star * phi_star) + 1.0 / v).sqrt();
+        let new_mu   = mu + new_phi * new_phi * g * (score - e);
+
+        Glicko2 {
+            rating:     (GLICKO_SCALE * new_mu + GLICKO_BASE).max(100.0),
+            rd:         (GLICKO_SCALE * new_phi).clamp(30.0, 350.0),
+            volatility: new_vol,
+        }
+    }
 }
 
 async fn upsert_elo(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     user_id: Uuid,
     agent_name: &str,
-    elo: f64,
+    g: &Glicko2,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(r#"
-        INSERT INTO elo_ratings (user_id, agent_name, elo, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (user_id, agent_name) DO UPDATE SET elo = EXCLUDED.elo, updated_at = NOW()
+        INSERT INTO elo_ratings (user_id, agent_name, elo, rd, volatility, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (user_id, agent_name) DO UPDATE
+            SET elo = EXCLUDED.elo, rd = EXCLUDED.rd, volatility = EXCLUDED.volatility, updated_at = NOW()
     "#)
-    .bind(user_id).bind(agent_name).bind(elo)
+    .bind(user_id).bind(agent_name).bind(g.rating).bind(g.rd).bind(g.volatility)
     .execute(&mut **tx).await?;
     Ok(())
 }
@@ -908,32 +1035,52 @@ pub async fn save_pvp_battle(
     .bind(opponent_id)
     .execute(&mut *tx).await?;
 
-    // ── Elo 更新 ──────────────────────────────────────────────────────────────
+    // ── Glicko-2 更新 ─────────────────────────────────────────────────────────
     use sqlx::Row as _;
-    let ra: f64 = sqlx::query(
-        "SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2"
-    )
-    .bind(challenger_id).bind(challenger_name)
-    .fetch_optional(&mut *tx).await?
-    .map(|r| r.get::<f64, _>("elo"))
-    .unwrap_or(1000.0);
+    let load_glicko = |row: Option<sqlx::postgres::PgRow>| -> Glicko2 {
+        match row {
+            Some(r) => Glicko2 {
+                rating:     r.get("elo"),
+                rd:         r.get("rd"),
+                volatility: r.get("volatility"),
+            },
+            None => Glicko2::new_player(),
+        }
+    };
 
-    let rb: f64 = sqlx::query(
-        "SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2"
-    )
-    .bind(opponent_id).bind(opponent_name)
-    .fetch_optional(&mut *tx).await?
-    .map(|r| r.get::<f64, _>("elo"))
-    .unwrap_or(1000.0);
+    // FOR UPDATE：锁定行，防止并发对战覆盖彼此的 Glicko 更新
+    let ga = load_glicko(sqlx::query(
+        "SELECT elo, rd, volatility FROM elo_ratings WHERE user_id = $1 AND agent_name = $2 FOR UPDATE"
+    ).bind(challenger_id).bind(challenger_name).fetch_optional(&mut *tx).await?);
 
-    const K: f64 = 32.0;
-    let ea = 1.0 / (1.0 + 10_f64.powf((rb - ra) / 400.0));
-    let (sa, sb) = if result.winner == challenger_name { (1.0_f64, 0.0_f64) } else { (0.0_f64, 1.0_f64) };
-    let new_ra = (ra + K * (sa - ea)).max(1.0);
-    let new_rb = (rb + K * (sb - (1.0 - ea))).max(1.0);
+    let gb = load_glicko(sqlx::query(
+        "SELECT elo, rd, volatility FROM elo_ratings WHERE user_id = $1 AND agent_name = $2 FOR UPDATE"
+    ).bind(opponent_id).bind(opponent_name).fetch_optional(&mut *tx).await?);
 
-    upsert_elo(&mut tx, challenger_id, challenger_name, new_ra).await?;
-    upsert_elo(&mut tx, opponent_id, opponent_name, new_rb).await?;
+    let (sa, sb) = if result.winner == challenger_name {
+        (1.0_f64, 0.0_f64)
+    } else if result.winner == opponent_name {
+        (0.0_f64, 1.0_f64)
+    } else {
+        // 双方同帧互杀（"无"）：用 JS 执行效率决定胜负
+        // 指标：错误次数优先，其次平均执行耗时（越低越好）
+        let stat = |name: &str| result.js_stats.iter().find(|s| s.tank_name == name);
+        let score_of = |name: &str| -> (u32, u64) {
+            stat(name).map(|s| (s.error_count, s.avg_exec_us)).unwrap_or((u32::MAX, u64::MAX))
+        };
+        let ca = score_of(challenger_name);
+        let cb = score_of(opponent_name);
+        match ca.cmp(&cb) {
+            std::cmp::Ordering::Less    => (1.0, 0.0), // 挑战方效率更好
+            std::cmp::Ordering::Greater => (0.0, 1.0), // 对手效率更好
+            std::cmp::Ordering::Equal   => (0.5, 0.5), // 完全一致才平局
+        }
+    };
+    let new_ga = ga.update(&gb, sa);
+    let new_gb = gb.update(&ga, sb);
+
+    upsert_elo(&mut tx, challenger_id, challenger_name, &new_ga).await?;
+    upsert_elo(&mut tx, opponent_id,   opponent_name,   &new_gb).await?;
 
     tx.commit().await?;
 

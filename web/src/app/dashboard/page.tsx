@@ -18,6 +18,7 @@ interface PlayerEntry {
   pvp_wins: number
   pvp_losses: number
   elo: number
+  version?: number
 }
 
 const PERIOD_ACCENTS: Record<Period, string> = {
@@ -366,6 +367,14 @@ export default function DashboardPage() {
                     <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-black text-white truncate">{p.agent_name}</span>
+                        {p.version != null && (
+                          <span
+                            className="shrink-0 rounded-full border-2 px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-widest"
+                            style={{ borderColor: "#52525b", color: "#a1a1aa", background: "#52525b18" }}
+                          >
+                            v{p.version}
+                          </span>
+                        )}
                         {isMe && (
                           <span
                             className="shrink-0 rounded-full border-2 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"

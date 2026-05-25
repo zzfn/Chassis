@@ -163,11 +163,33 @@ async fn handle_verify_email(
     }
 }
 
+async fn handle_me(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let Some(user_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+    match db::get_user_profile(pool, user_id).await {
+        Ok(Some(p)) => axum::Json(serde_json::json!({
+            "id":          p.id.to_string(),
+            "username":    p.username,
+            "email":       p.email,
+            "tank_count":  p.tank_count,
+            "created_at":  p.created_at,
+        })).into_response(),
+        Ok(None)    => json_err(404, "用户不存在"),
+        Err(e)      => json_err(500, &e.to_string()),
+    }
+}
+
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/register",     post(handle_register))
         .route("/api/login",        post(handle_login))
         .route("/api/verify-email", get(handle_verify_email))
+        .route("/api/me",           get(handle_me))
         .route("/api/keys",         get(list_keys).post(create_key))
         .route("/api/keys/:id",     axum::routing::delete(delete_key))
 }

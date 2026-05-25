@@ -233,7 +233,7 @@ async fn handle_matchmake(
         Ok(None)    => return json_err(404, "请先提交坦克"),
         Err(e)      => return json_err(500, &e.to_string()),
     };
-    let opponent = match db::get_random_opponent(pool, challenger_id).await {
+    let opponent = match db::get_random_opponent(pool, challenger_id, &challenger.name).await {
         Ok(Some(a)) => a,
         Ok(None)    => return json_err(404, "暂无其他玩家，快邀请好友来战吧"),
         Err(e)      => return json_err(500, &e.to_string()),

@@ -69,6 +69,7 @@ interface Tank {
   pvp_battles?: number
   elo?: number
   skin?: TankSkin
+  version?: number
 }
 
 /* ── Avatar ── */
@@ -534,6 +535,18 @@ function TanksContent() {
                         >
                           Elo {elo}
                         </span>
+                        {tank.version != null && (
+                          <span
+                            className="inline-flex items-center rounded-full border-4 px-3 py-0.5 font-mono text-xs font-black uppercase tracking-wide"
+                            style={{
+                              borderColor: "#52525b",
+                              color:       "#a1a1aa",
+                              background:  "#52525b18",
+                            }}
+                          >
+                            v{tank.version}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs font-medium text-white/45">
                         {battles === 0

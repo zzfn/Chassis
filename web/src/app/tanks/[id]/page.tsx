@@ -108,16 +108,30 @@ function getRankInfo(elo: number) {
   return { tier: t.tier, division: t.division, score: Math.round(elo), progress: Math.min(progress, 99), color: t.color }
 }
 
-function TankAvatar({ name, skin }: { name: string; skin?: TankSkin }) {
+function TankAvatar({ name, skin, size = "md" }: { name: string; skin?: TankSkin; size?: "sm" | "md" | "lg" }) {
   const hue = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  const sizeClasses = {
+    sm: "size-16 text-xl",
+    md: "size-24 text-2xl",
+    lg: "size-40 text-4xl",
+  }
+  const svgSizes = {
+    sm: { w: 56, h: 40 },
+    md: { w: 88, h: 62 },
+    lg: { w: 148, h: 104 },
+  }
   return (
     <div
-      className="relative flex size-24 shrink-0 items-center justify-center rounded-xl border-2 border-zinc-600 text-2xl font-bold text-white shadow-lg overflow-hidden"
-      style={{ background: `hsl(${hue},40%,${skin?.svg ? 10 : 22}%)` }}
+      className={`relative flex shrink-0 items-center justify-center border-4 border-black font-black text-black shadow-[6px_6px_0px_0px_#000] overflow-hidden ${sizeClasses[size]}`}
+      style={{ background: `hsl(${hue},55%,${skin?.svg ? 20 : 65}%)` }}
     >
       {skin?.svg ? (
-        <svg viewBox="-20 -14 40 28" width="88" height="62"
-             dangerouslySetInnerHTML={{ __html: skin.svg }} />
+        <svg
+          viewBox="-20 -14 40 28"
+          width={svgSizes[size].w}
+          height={svgSizes[size].h}
+          dangerouslySetInnerHTML={{ __html: skin.svg }}
+        />
       ) : (
         name.slice(0, 2).toUpperCase()
       )}
@@ -159,7 +173,7 @@ function BulletFirePreview({ bulletStyle, skinSvg }: { bulletStyle: string; skin
   })()
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950">
+    <div className="overflow-hidden border-4 border-black shadow-[4px_4px_0px_0px_#000]">
       <svg viewBox="0 0 280 72" width="100%" xmlns="http://www.w3.org/2000/svg">
         {/* 地面 */}
         <rect x="0" y="54" width="280" height="18" fill="#18181b" />
@@ -237,8 +251,13 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
   return (
-    <button onClick={copy} className="rounded p-1.5 text-zinc-500 hover:text-white transition-colors">
-      {copied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
+    <button
+      onClick={copy}
+      className="border-2 border-black p-1.5 hover:bg-[#FFD93D] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+    >
+      {copied
+        ? <Check className="size-4 text-white" />
+        : <Copy className="size-4 text-white" />}
     </button>
   )
 }
@@ -440,17 +459,30 @@ export default function TankDetailPage() {
   }
 
   if (loading) return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-950">
-      <Loader2 className="size-5 animate-spin text-zinc-500" />
+    <main
+      className="flex flex-1 items-center justify-center bg-[#FFFDF5] text-black"
+      style={{ backgroundImage: "radial-gradient(#00000012 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+    >
+      <div className="border-4 border-black bg-white p-10 shadow-[8px_8px_0px_0px_#000]">
+        <Loader2 className="size-8 animate-spin" />
+      </div>
     </main>
   )
 
   if (error || !tank) return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
-      <Link href="/tanks" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-white">
-        <ArrowLeft className="size-4" /> 返回
+    <main
+      className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 bg-[#FFFDF5] text-black"
+      style={{ backgroundImage: "radial-gradient(#00000012 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+    >
+      <Link
+        href="/tanks"
+        className="inline-flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+      >
+        <ArrowLeft className="size-4 stroke-[3px]" /> 返回
       </Link>
-      <p className="mt-4 rounded bg-red-950 px-3 py-2 text-sm text-red-400">{error ?? "坦克不存在"}</p>
+      <p className="mt-4 border-4 border-black bg-[#FF6B6B] px-4 py-3 text-white font-black shadow-[4px_4px_0px_0px_#000]">
+        {error ?? "坦克不存在"}
+      </p>
     </main>
   )
 
@@ -464,55 +496,44 @@ export default function TankDetailPage() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       onClick={e => { if (e.target === e.currentTarget) setShareOpen(false) }}
     >
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
+      <div className="flex w-full max-w-md flex-col overflow-hidden border-4 border-black bg-[#FFFDF5] shadow-[12px_12px_0px_0px_#000]">
+        {/* 黄色头部 */}
+        <div className="flex items-start justify-between gap-4 border-b-4 border-black bg-[#FFD93D] p-5">
           <div>
-            <h2 className="text-lg font-bold text-white">分享坦克</h2>
-            <p className="mt-1 text-sm text-zinc-400">把链接发给朋友，他们可以围观或直接发起挑战。</p>
+            <h2 className="text-xl font-black uppercase tracking-tight">分享坦克</h2>
+            <p className="mt-1 text-sm font-bold text-black/70">把链接发给朋友，围观或发起挑战</p>
           </div>
           <button
             onClick={() => setShareOpen(false)}
-            className="shrink-0 rounded-lg border border-zinc-700 p-1.5 text-zinc-400 hover:border-zinc-500 hover:text-white transition-colors"
+            className="border-4 border-black bg-white p-1.5 shadow-[3px_3px_0px_0px_#000] hover:bg-black hover:text-white active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
             aria-label="关闭"
           >
-            <X className="size-4" />
+            <X className="size-4 stroke-[3px]" />
           </button>
         </div>
 
-        {/* 坦克卡片 */}
-        <div className="flex items-center gap-4 border-b border-zinc-800 bg-zinc-950/40 p-5">
-          <div
-            className="flex size-20 shrink-0 items-center justify-center rounded-xl border-2 border-zinc-600 text-2xl font-black text-white shadow-lg overflow-hidden"
-            style={{ background: `hsl(${[...tank.agent_name].reduce((a,c)=>a+c.charCodeAt(0),0)%360},40%,${skin?.svg ? 10 : 22}%)` }}
-          >
-            {skin?.svg ? (
-              <svg viewBox="-20 -14 40 28" width="72" height="50"
-                   dangerouslySetInnerHTML={{ __html: skin.svg }} />
-            ) : (
-              tank.agent_name.slice(0, 2).toUpperCase()
-            )}
-          </div>
-          <div className="flex flex-col gap-1 min-w-0 flex-1">
-            <p className="text-lg font-bold text-white truncate">{tank.agent_name}</p>
-            <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: rank.color }}>
-              <Shield className="size-3.5" /> {rank.tier} {rank.division}
+        {/* 坦克行 */}
+        <div className="flex items-center gap-4 border-b-4 border-black bg-white p-5">
+          <TankAvatar name={tank.agent_name} skin={skin} size="sm" />
+          <div>
+            <p className="text-2xl font-black uppercase leading-tight">{tank.agent_name}</p>
+            <div className="flex items-center gap-1.5 text-sm font-bold" style={{ color: rank.color }}>
+              <Shield className="size-3.5 stroke-[3px]" /> {rank.tier} {rank.division}
             </div>
-            <p className="text-xs text-zinc-500">
-              {tank.pvp_wins} 胜 · {tank.pvp_losses} 负 · 胜率 {winRate}%
-            </p>
+            <p className="text-xs font-bold text-black/60">{tank.pvp_wins}胜 · {tank.pvp_losses}负 · 胜率 {winRate}%</p>
           </div>
         </div>
 
-        {/* 分享链接 */}
-        <div className="flex flex-col gap-2 p-5">
-          <p className="text-xs font-semibold tracking-widest text-blue-400 uppercase">分享链接</p>
-          <div className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-950 px-3 py-2">
+        {/* URL */}
+        <div className="p-5">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-widest">分享链接</p>
+          <div className="flex items-center border-4 border-black bg-white shadow-[4px_4px_0px_0px_#000]">
             <input
               type="text"
               readOnly
               value={shareUrl}
               onFocus={e => e.currentTarget.select()}
-              className="flex-1 truncate bg-transparent font-mono text-xs text-zinc-300 focus:outline-none"
+              className="flex-1 truncate bg-transparent px-3 py-2 font-mono text-xs focus:outline-none"
             />
             <CopyButton text={shareUrl} />
           </div>
@@ -524,135 +545,141 @@ export default function TankDetailPage() {
   // ── 公开视图（非 Owner）──
   if (!isOwner) {
     return (
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 flex flex-col gap-6">
+      <main
+        className="flex-1 bg-[#FFFDF5] text-black"
+        style={{ backgroundImage: "radial-gradient(#00000012 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+      >
+        <div className="mx-auto w-full max-w-4xl px-4 py-8 flex flex-col gap-6">
 
-        <div className="flex items-center justify-between">
-          <Link href="/tanks" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-white">
-            <ArrowLeft className="size-4" /> 返回坦克库
-          </Link>
-        </div>
+          <div className="flex items-center justify-between">
+            <Link
+              href="/tanks"
+              className="inline-flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+            >
+              <ArrowLeft className="size-4 stroke-[3px]" /> 返回坦克库
+            </Link>
+          </div>
 
-        {/* 头部信息 */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          {/* 头部信息区 */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex flex-col gap-3">
-              <h1 className="text-3xl font-extrabold text-white">{tank.agent_name}</h1>
-              <p className="text-sm text-zinc-500">拥有者：{tank.owner}</p>
+            {/* 左侧：名称 + 成就 + 统计 + 按钮 */}
+            <div className="flex flex-col gap-4 flex-1 min-w-0">
+              <div>
+                <h1 className="text-7xl sm:text-8xl font-black uppercase tracking-tight leading-none break-all">{tank.agent_name}</h1>
+                <p className="mt-2 text-sm font-bold text-black/60">拥有者：{tank.owner}</p>
+              </div>
 
               {/* 成就标签 */}
               {achievements.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {achievements.map(a => (
-                    <span key={a.label} title={a.desc}
-                      className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                <div className="flex flex-wrap gap-2">
+                  {achievements.map((a, i) => (
+                    <span
+                      key={a.label}
+                      title={a.desc}
+                      className={`inline-flex items-center gap-1 border-2 border-black bg-[#FFD93D] px-2.5 py-1 text-xs font-black shadow-[2px_2px_0px_0px_#000] ${i % 2 === 0 ? "rotate-1" : "-rotate-1"}`}
+                    >
                       {a.icon} {a.label}
                     </span>
                   ))}
                 </div>
               )}
 
-              {/* 2×3 统计网格 */}
-              <div className="grid grid-cols-2 gap-2.5">
+              {/* 统计网格 */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 border-4 border-black shadow-[6px_6px_0px_0px_#000]">
                 {[
-                  ["RANK",       `${rank.tier} ${rank.division}`],
-                  ["RANK SCORE", rank.score.toString()],
-                  ["RECORD",     `${tank.pvp_wins}-${tank.pvp_losses}-0`],
-                  ["WIN RATE",   `${winRate}%`],
-                  ["BATTLES",    tank.pvp_battles.toString()],
-                  ["STATUS",     "活跃"],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg border border-zinc-700 bg-zinc-800/40 px-4 py-3">
-                    <p className="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">{label}</p>
-                    <p className="mt-1 text-lg font-bold text-white">{value}</p>
+                  ["RANK",    `${rank.tier} ${rank.division}`, "#FFD93D", true],
+                  ["SCORE",   rank.score.toString(),           "#FFD93D", true],
+                  ["RECORD",  `${tank.pvp_wins}-${tank.pvp_losses}-0`, "#FFD93D", true],
+                  ["WIN RATE",`${winRate}%`,                   "#1a1a1a", false],
+                  ["BATTLES", tank.pvp_battles.toString(),     "#1a1a1a", false],
+                  ["STATUS",  "活跃",                           "#1a1a1a", false],
+                ].map(([label, value, bg, isDark]) => (
+                  <div
+                    key={label as string}
+                    className="flex flex-col gap-1 px-4 py-3 border-r-4 border-b-4 border-black last:border-r-0 [&:nth-child(3)]:border-r-0 sm:[&:nth-child(3)]:border-r-4 sm:[&:nth-child(6)]:border-r-0"
+                    style={{ backgroundColor: bg as string }}
+                  >
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${isDark ? "text-black/60" : "text-black/60"}`}>{label as string}</p>
+                    <p className={`text-xl font-black ${isDark ? "text-black" : "text-black"}`}>{value as string}</p>
                   </div>
                 ))}
               </div>
 
               {/* 操作按钮 */}
-              <div className="flex flex-wrap gap-3 pt-1">
+              <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-                  className="flex items-center gap-2 rounded-lg bg-red-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-600 transition-colors underline underline-offset-2"
+                  className="flex w-full sm:w-auto items-center justify-center gap-2 border-4 border-black bg-[#FF6B6B] px-6 py-3 text-sm font-black uppercase text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[8px_8px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
                 >
-                  <Swords className="size-4" /> 挑战此坦克
+                  <Swords className="size-4 stroke-[3px]" /> CHALLENGE 挑战此坦克 →
                 </button>
                 <button
                   onClick={() => setShareOpen(true)}
-                  className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+                  className="flex w-full sm:w-auto items-center justify-center gap-2 border-4 border-black bg-white px-5 py-3 text-sm font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
                 >
-                  <Share2 className="size-4" /> 分享
+                  <Share2 className="size-4 stroke-[3px]" /> 分享
                 </button>
               </div>
             </div>
 
-            {/* 右侧头像 */}
+            {/* 右侧：大头像 + rank badge */}
             <div className="flex shrink-0 flex-col items-center gap-3">
+              <TankAvatar name={tank.agent_name} skin={skin} size="lg" />
               <div
-                className="flex size-40 items-center justify-center rounded-xl border-2 border-zinc-600 text-5xl font-black text-white shadow-xl overflow-hidden"
-                style={{ background: `hsl(${[...tank.agent_name].reduce((a,c)=>a+c.charCodeAt(0),0)%360},40%,${skin?.svg ? 10 : 18}%)` }}
+                className="flex items-center gap-1.5 rounded-full border-4 border-black bg-white px-3 py-1 text-xs font-black shadow-[3px_3px_0px_0px_#000]"
+                style={{ color: rank.color }}
               >
-                {skin?.svg ? (
-                  <svg viewBox="-20 -14 40 28" width="148" height="104"
-                       dangerouslySetInnerHTML={{ __html: skin.svg }} />
-                ) : (
-                  tank.agent_name.slice(0,2).toUpperCase()
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs font-semibold" style={{ color: rank.color }}>
-                <Shield className="size-3.5" /> {rank.tier} {rank.division}
+                <Shield className="size-3.5 stroke-[3px]" /> {rank.tier} {rank.division}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Recent Battles */}
-        <div className="rounded-xl border-2 border-zinc-700 bg-zinc-900 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-800/60 px-5 py-2.5">
-            <span className="flex items-center gap-2">
-              <span className="size-2 rounded-full bg-red-500" />
-              <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">Recent Battles</span>
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-0 sm:flex-row sm:items-start sm:gap-0">
-            <div className="flex flex-col gap-0 sm:border-r sm:border-zinc-800 sm:w-56 shrink-0 p-5">
-              <h2 className="text-2xl font-black text-white">Recent Battles</h2>
-              <p className="mt-2 text-xs text-zinc-500 leading-relaxed">查看该坦克的最新公开对战记录，了解其战斗风格与表现。</p>
+          {/* Recent Battles 面板 */}
+          <div className="border-4 border-black shadow-[8px_8px_0px_0px_#000] overflow-hidden">
+            <div className="bg-black text-white px-5 py-3">
+              <span className="text-sm font-black uppercase tracking-widest">Recent Battles</span>
             </div>
-            <div className="flex-1 divide-y divide-zinc-800">
+
+            <div className="divide-y-4 divide-black">
               {tank.battles.length === 0 ? (
-                <p className="px-5 py-12 text-center text-sm text-zinc-600">暂无 PvP 对战记录</p>
+                <p className="px-5 py-12 text-center text-sm font-bold text-black/50">暂无 PvP 对战记录</p>
               ) : tank.battles.map(battle => {
                 const won = battle.winner === tank.agent_name
                 const opponent = battle.challenger === tank.agent_name ? battle.opponent : battle.challenger
                 return (
-                  <div key={battle.id} className="flex items-center gap-3 px-5 py-3.5">
+                  <div key={battle.id} className="flex items-center gap-4 px-5 py-4 bg-white">
                     {/* W/L 方块 */}
-                    <div className={`flex size-10 shrink-0 items-center justify-center rounded border-2 text-xs font-black ${won ? "border-green-600 bg-green-950/60 text-green-400" : "border-zinc-700 bg-zinc-800/60 text-zinc-500"}`}>
+                    <div
+                      className={`flex size-10 shrink-0 items-center justify-center border-4 border-black text-xs font-black ${won ? "bg-[#FF6B6B] text-white" : "bg-white text-white"}`}
+                    >
                       {won ? "W" : "L"}
                     </div>
                     {/* 对手头像 */}
                     <div
-                      className="flex size-10 shrink-0 items-center justify-center rounded border border-zinc-700 text-xs font-bold text-white"
-                      style={{ background: `hsl(${[...opponent].reduce((a,c)=>a+c.charCodeAt(0),0)%360},35%,20%)` }}
+                      className="flex size-10 shrink-0 items-center justify-center border-2 border-black text-xs font-black"
+                      style={{ background: `hsl(${[...opponent].reduce((a, c) => a + c.charCodeAt(0), 0) % 360},55%,65%)` }}
                     >
-                      {opponent.slice(0,2).toUpperCase()}
+                      {opponent.slice(0, 2).toUpperCase()}
                     </div>
                     {/* 信息 */}
                     <div className="flex flex-1 flex-col gap-0.5 min-w-0">
-                      <span className={`text-xs font-bold uppercase ${won ? "text-green-400" : "text-zinc-500"}`}>{won ? "WIN" : "LOSS"}</span>
-                      <span className="text-sm font-semibold text-white truncate">{opponent}</span>
-                      <span className="text-[11px] text-zinc-600">{new Date(battle.created_at).toLocaleString("zh-CN")} · {battle.total_ticks} 回合</span>
+                      <span className="text-sm font-black uppercase truncate">{opponent}</span>
+                      <span className="text-[11px] font-bold text-black/50">
+                        {new Date(battle.created_at).toLocaleString("zh-CN")} · {battle.total_ticks} 回合
+                      </span>
                     </div>
-                    <Link href={`/replay/${battle.id}`}
-                      className="shrink-0 rounded border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-400 hover:text-white transition-colors">
-                      Watch replay
+                    <Link
+                      href={`/replay/${battle.id}`}
+                      className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-xs font-black uppercase shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                    >
+                      WATCH REPLAY
                     </Link>
                   </div>
                 )
               })}
             </div>
           </div>
+
         </div>
         {shareModal}
       </main>
@@ -661,141 +688,154 @@ export default function TankDetailPage() {
 
   // ── Owner 管理视图 ──
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 flex flex-col gap-6">
+    <main
+      className="flex-1 bg-[#FFFDF5] text-black"
+      style={{ backgroundImage: "radial-gradient(#00000012 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+    >
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 flex flex-col gap-6">
 
-      {/* ── 顶部操作栏 ── */}
-      <div className="flex items-center justify-between">
-        <Link href="/tanks" className="flex items-center gap-1.5 rounded border border-zinc-700 bg-transparent px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors">
-          <ArrowLeft className="size-4" /> 返回坦克库
-        </Link>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+        {/* ── 顶部操作栏 ── */}
+        <div className="flex items-center justify-between">
+          <Link
+            href="/tanks"
+            className="flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
           >
-            <Share2 className="size-4" /> 分享坦克
-          </button>
-          <button
-            onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-            className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
-          >
-            <Swords className="size-4" /> 进入竞技场
-          </button>
+            <ArrowLeft className="size-4 stroke-[3px]" /> 返回坦克库
+          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShareOpen(true)}
+              className="flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+            >
+              <Share2 className="size-4 stroke-[3px]" /> 分享坦克
+            </button>
+            <button
+              onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
+              className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-3 py-1.5 text-sm font-black text-white uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+            >
+              <Swords className="size-4 stroke-[3px]" /> 进入竞技场
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* ── 标题区 ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-extrabold tracking-tight text-white">{tank.agent_name}</h1>
-          <p className="text-sm text-zinc-500">当前对战记录：{tank.pvp_wins} 胜 · {tank.pvp_losses} 负</p>
-          {achievements.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-2">
-              {achievements.map(a => (
-                <span
-                  key={a.label}
-                  title={a.desc}
-                  className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300 cursor-default"
-                >
-                  <span>{a.icon}</span>{a.label}
-                </span>
+        {/* ── 标题区 ── */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-5xl font-black uppercase tracking-tight leading-none">{tank.agent_name}</h1>
+            <p className="text-sm font-bold text-black/60">当前对战记录：{tank.pvp_wins} 胜 · {tank.pvp_losses} 负</p>
+            {achievements.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {achievements.map((a, i) => (
+                  <span
+                    key={a.label}
+                    title={a.desc}
+                    className={`inline-flex items-center gap-1 border-2 border-black bg-[#FFD93D] px-2.5 py-1 text-xs font-black shadow-[2px_2px_0px_0px_#000] cursor-default ${i % 2 === 0 ? "rotate-1" : "-rotate-1"}`}
+                  >
+                    <span>{a.icon}</span>{a.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <TankAvatar name={tank.agent_name} skin={skin} size="md" />
+        </div>
+
+        {/* ── 两列布局 ── */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+
+          {/* 左：概况 */}
+          <div className="flex flex-col gap-4">
+
+            {/* 段位卡 */}
+            <div className="border-4 border-black bg-[#C4B5FD] p-4 shadow-[6px_6px_0px_0px_#000]">
+              <p className="mb-1 text-xs font-black uppercase tracking-widest text-black/60">段位</p>
+              <div className="flex items-center gap-2">
+                <Shield className="size-5 stroke-[3px]" style={{ color: rank.color }} />
+                <span className="text-xl font-black">{rank.tier} {rank.division}</span>
+              </div>
+              <div className="mt-3 border-2 border-black h-4 bg-white overflow-hidden">
+                <div
+                  className="h-full bg-[#FFD93D] transition-all"
+                  style={{ width: `${rank.progress}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs font-bold text-black/60">{rank.progress}/100</p>
+            </div>
+
+            {/* 统计表 */}
+            <div className="border-4 border-black bg-white shadow-[4px_4px_0px_0px_#000] divide-y-4 divide-black">
+              {[
+                ["积分", rank.score.toString()],
+                ["胜率", `${winRate}%`],
+                ["战绩", `${tank.pvp_wins}-${tank.pvp_losses}-0`],
+                ["状态", "活跃"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between px-4 py-3">
+                  <span className="font-bold text-black/60">{label}</span>
+                  <span className="font-black">{value}</span>
+                </div>
               ))}
             </div>
-          )}
-        </div>
-        <TankAvatar name={tank.agent_name} skin={skin} />
-      </div>
-
-      {/* ── 两列布局 ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
-
-        {/* 左：概况 */}
-        <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-300">概况</h2>
-
-          {/* 段位卡 */}
-          <div className="rounded-lg border-2 border-yellow-600/40 bg-yellow-900/10 p-4">
-            <p className="mb-1 text-xs text-zinc-500">段位</p>
-            <div className="flex items-center gap-2">
-              <Shield className="size-5" style={{ color: rank.color }} />
-              <span className="text-xl font-bold text-white">{rank.tier} {rank.division}</span>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
-              <div className="h-full rounded-full transition-all" style={{ width: `${rank.progress}%`, backgroundColor: rank.color }} />
-            </div>
-            <p className="mt-1 text-xs text-zinc-500">{rank.progress}/100</p>
           </div>
 
-          {/* 统计表 */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800 text-sm">
-            {[
-              ["积分", rank.score.toString()],
-              ["胜率", `${winRate}%`],
-              ["战绩", `${tank.pvp_wins}-${tank.pvp_losses}-0`],
-              ["状态", "活跃"],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between px-4 py-2.5">
-                <span className="text-zinc-500">{label}</span>
-                <span className="font-semibold text-white">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 右：Agent Access / 代码编辑器 */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex rounded-lg border border-zinc-700 p-0.5">
-              <button
-                onClick={() => setRightTab("access")}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${rightTab === "access" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
-              >
-                Agent Access
-              </button>
-              <button
-                onClick={() => setRightTab("code")}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${rightTab === "code" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
-              >
-                代码编辑器
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              {isOwner && (
-                <button
-                  onClick={() => { setManageOpen(true); setRenameTo(tank.agent_name) }}
-                  className="flex items-center gap-1.5 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
-                >
-                  <Settings className="size-3.5" /> 管理
-                </button>
-              )}
-              {rightTab === "code" && isOwner && (
-                <>
-                  <select
-                    value={submittedBy}
-                    onChange={e => setSubmittedBy(e.target.value)}
-                    className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    {AI_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+          {/* 右：Agent Access / 代码编辑器 */}
+          <div className="flex flex-col gap-3">
+            {/* 标签栏 */}
+            <div className="border-4 border-black bg-white shadow-[6px_6px_0px_0px_#000]">
+              <div className="border-b-4 border-black flex items-center">
+                <div className="flex flex-1">
                   <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60 transition-colors"
+                    onClick={() => setRightTab("access")}
+                    className={`px-5 py-3 text-sm transition-colors ${rightTab === "access" ? "border-b-4 border-black bg-[#FFD93D] font-black" : "font-bold text-black/50 hover:text-black"}`}
                   >
-                    {submitting ? <><Loader2 className="size-3.5 animate-spin" />测试中...</> : "提交更新"}
+                    Agent Access
                   </button>
-                </>
-              )}
-            </div>
-          </div>
+                  <button
+                    onClick={() => setRightTab("code")}
+                    className={`px-5 py-3 text-sm transition-colors ${rightTab === "code" ? "border-b-4 border-black bg-[#FFD93D] font-black" : "font-bold text-black/50 hover:text-black"}`}
+                  >
+                    代码编辑器
+                  </button>
+                </div>
+                {/* 右侧操作按钮 */}
+                <div className="flex items-center gap-2 px-3">
+                  {isOwner && (
+                    <button
+                      onClick={() => { setManageOpen(true); setRenameTo(tank.agent_name) }}
+                      className="flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                    >
+                      <Settings className="size-3.5 stroke-[3px]" /> 管理
+                    </button>
+                  )}
+                  {rightTab === "code" && isOwner && (
+                    <>
+                      <select
+                        value={submittedBy}
+                        onChange={e => setSubmittedBy(e.target.value)}
+                        className="border-4 border-black bg-white px-2 py-1.5 text-sm font-bold focus:outline-none"
+                      >
+                        {AI_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-3 py-1.5 text-sm font-black uppercase text-white shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-60 transition-all duration-100"
+                      >
+                        {submitting ? <><Loader2 className="size-3.5 animate-spin" />测试中...</> : "提交更新"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
 
-          {rightTab === "access" && (() => {
-            const origin = typeof window !== "undefined" ? window.location.origin : ""
-            const guideUrl = `${origin}/agent-guide`
-            const keyValue = apiKey?.key ?? "<在下方点击「生成密钥」后填入>"
-            const fullPrompt = `你正在协助玩家迭代 DeepTank 坦克竞技场的 AI 坦克 agent。
+              {/* Agent Access 内容 */}
+              {rightTab === "access" && (() => {
+                const origin = typeof window !== "undefined" ? window.location.origin : ""
+                const guideUrl = `${origin}/agent-guide`
+                const keyValue = apiKey?.key ?? "<在下方点击「生成密钥」后填入>"
+                const fullPrompt = `你正在协助玩家迭代 DeepTank 坦克竞技场的 AI 坦克 agent。
 
 【任务】
 为坦克 "${tank.agent_name}" 编写或改进 JavaScript 策略代码（onIdle 函数），目标是提升对战胜率。
@@ -813,14 +853,16 @@ ${guideUrl}
 
 【建议工作流】
 1. GET  ${apiBase}/api/agent/tank
-   读取当前代码、战绩、Elo、可用 bot 列表。
+   读取当前代码、战绩、Elo。
 2. 分析现有代码与对战记录，提出改进策略。
 3. POST ${apiBase}/api/agent/tank/simulate
-   用草稿代码本地模拟对战（不计入战绩）。body: { "opponentId": "rusher"|"circler"|"sniper"|"camper", "code": "..." }
+   用草稿代码做镜像自战（不计入战绩，用于验证代码不崩溃、基本逻辑正确）。
+   body: { "code": "..." }
 4. POST ${apiBase}/api/agent/tank/code
-   发布新版本，会先与三个内置 bot 对战验证。body: { "code": "...", "notes": "改动说明", "submittedBy": "Claude" }
-5. （可选）POST ${apiBase}/api/agent/tank/challenge
-   挑战其他玩家坦克，战绩计入排行榜。body: { "opponentTankId": "<agent_id>" } 或 { "randomOpponent": true }
+   发布新版本。body: { "code": "...", "notes": "改动说明", "submittedBy": "Claude" }
+5. POST ${apiBase}/api/agent/tank/challenge
+   挑战其他玩家坦克，战绩计入排行榜。body: { "randomOpponent": true }
+   或指定对手：body: { "opponentTankId": "<agent_id>" }
 
 【运行时合约简要】
 - 入口：function onIdle(me, enemy, game) { ... }
@@ -832,455 +874,478 @@ ${guideUrl}
 
 请先调用 GET ${apiBase}/api/agent/tank 读取上下文，并打印出当前代码与战绩，然后再开始迭代。`
 
-            return (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
-                <div>
-                  <h3 className="text-base font-semibold text-white">Agent Access</h3>
-                  <p className="mt-1 text-sm text-zinc-500">使用 Tank Key 让你的 Agent 读取、测试和更新这个坦克。下方的「完整 Prompt」可直接复制粘贴给任意 AI 助手。</p>
-                </div>
-
-                {/* 完整 Prompt —— 一键复制给 AI */}
-                <div className="rounded border border-blue-700/60 bg-blue-950/20 overflow-hidden">
-                  <div className="flex items-center justify-between bg-blue-900/30 px-3 py-1.5">
-                    <span className="text-xs font-semibold tracking-widest text-blue-300">完整 PROMPT · 复制后直接发给 AI</span>
-                    <CopyButton text={fullPrompt} />
-                  </div>
-                  <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words bg-zinc-950 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-300">
-                    {fullPrompt}
-                  </pre>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="rounded border border-zinc-700 overflow-hidden">
-                    <div className="bg-zinc-800 px-3 py-1.5 flex items-center justify-between">
-                      <span className="text-xs font-semibold tracking-widest text-blue-400">TANK KEY</span>
-                      {isOwner && (
-                        <button
-                          onClick={generateKey}
-                          disabled={generatingKey}
-                          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-500 hover:text-white disabled:opacity-40 transition-colors"
-                        >
-                          {generatingKey ? <Loader2 className="size-3 animate-spin" /> : "轮换密钥"}
-                        </button>
-                      )}
+                return (
+                  <div className="p-5 flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-tight">Agent Access</h3>
+                      <p className="mt-1 text-sm font-bold text-black/60">使用 Tank Key 让你的 Agent 读取、测试和更新这个坦克。下方的「完整 Prompt」可直接复制粘贴给任意 AI 助手。</p>
                     </div>
-                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2">
-                      {apiKey ? (
-                        <>
-                          <code className="flex-1 truncate font-mono text-xs text-blue-300">{apiKey.key}</code>
-                          <CopyButton text={apiKey.key} />
-                        </>
-                      ) : keyLoaded ? (
-                        <span className="flex-1 text-xs text-zinc-600">未生成</span>
-                      ) : (
-                        <span className="flex-1 flex items-center gap-1.5 text-xs text-zinc-600">
-                          <Loader2 className="size-3 animate-spin" /> 加载中…
+
+                    {/* 完整 Prompt */}
+                    <div className="border-4 border-black overflow-hidden shadow-[4px_4px_0px_0px_#000]">
+                      <div className="bg-black px-3 py-1.5 flex items-center justify-between">
+                        <span className="text-[#FFD93D] text-xs font-black uppercase tracking-widest">完整 PROMPT · 复制后直接发给 AI</span>
+                        <CopyButton text={fullPrompt} />
+                      </div>
+                      <pre className="bg-white px-3 py-2.5 font-mono text-[11px] text-zinc-300 max-h-72 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">
+                        {fullPrompt}
+                      </pre>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      {/* Tank Key */}
+                      <div className="border-4 border-black overflow-hidden shadow-[4px_4px_0px_0px_#000]">
+                        <div className="bg-black px-3 py-1.5 flex items-center justify-between">
+                          <span className="text-[#FFD93D] text-xs font-black uppercase tracking-widest">TANK KEY</span>
+                          {isOwner && (
+                            <button
+                              onClick={generateKey}
+                              disabled={generatingKey}
+                              className="border-2 border-[#FFD93D] px-2 py-0.5 text-[11px] text-[#FFD93D] font-bold hover:bg-[#FFD93D] hover:text-black disabled:opacity-40 transition-colors"
+                            >
+                              {generatingKey ? <Loader2 className="size-3 animate-spin" /> : "轮换密钥"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 bg-white px-3 py-2">
+                          {apiKey ? (
+                            <>
+                              <code className="flex-1 truncate font-mono text-xs text-black font-bold">{apiKey.key}</code>
+                              <CopyButton text={apiKey.key} />
+                            </>
+                          ) : keyLoaded ? (
+                            <span className="flex-1 text-xs font-bold text-black/40">未生成</span>
+                          ) : (
+                            <span className="flex-1 flex items-center gap-1.5 text-xs font-bold text-black/40">
+                              <Loader2 className="size-3 animate-spin" /> 加载中…
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Guide */}
+                      <div className="border-4 border-black overflow-hidden shadow-[4px_4px_0px_0px_#000]">
+                        <div className="bg-black px-3 py-1.5 flex items-center justify-between">
+                          <span className="text-[#FFD93D] text-xs font-black uppercase tracking-widest">GUIDE</span>
+                          <CopyButton text={guideUrl} />
+                        </div>
+                        <div className="flex items-center gap-2 bg-white px-3 py-2">
+                          <span className="flex-1 truncate font-mono text-xs font-bold">{guideUrl}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 代码编辑器内容 */}
+              {rightTab === "code" && (
+                <div className="flex flex-col gap-0">
+                  <div className="border-4 border-black shadow-[4px_4px_0px_0px_#000] overflow-hidden m-4 mb-0">
+                    <div className="bg-black px-4 py-2 border-b-4 border-black flex justify-between items-center">
+                      <span className="font-mono text-xs text-white">agent.js</span>
+                    </div>
+                    {isOwner ? (
+                      <MonacoEditor
+                        height="320px"
+                        defaultLanguage="javascript"
+                        value={code}
+                        onChange={val => setCode(val ?? "")}
+                        theme="vs-dark"
+                        options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 8, bottom: 8 } }}
+                      />
+                    ) : (
+                      <pre className="overflow-x-auto bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-300">{tank.code}</pre>
+                    )}
+                  </div>
+                  <div className="px-4 pt-3 pb-4 flex flex-col gap-2">
+                    {submitError && (
+                      <p className="border-4 border-black bg-[#FF6B6B] px-3 py-2 text-xs font-black text-white shadow-[2px_2px_0px_0px_#000]">
+                        {submitError}
+                      </p>
+                    )}
+                    {submitted && submitResults && (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="border-4 border-black bg-[#FFD93D] px-3 py-2 text-center text-xs font-black text-black shadow-[2px_2px_0px_0px_#000]">
+                          ✓ 已更新到排行榜
+                        </div>
+                        {submitResults.map(r => {
+                          const won = r.winner === tank.agent_name
+                          return (
+                            <div key={r.opponent} className="flex items-center justify-between border-4 border-black bg-white px-3 py-2 shadow-[2px_2px_0px_0px_#000]">
+                              <span className="text-xs font-bold">vs {BOT_LABEL[r.opponent] ?? r.opponent}</span>
+                              <div className="flex items-center gap-1.5">
+                                {won
+                                  ? <CheckCircle className="size-3.5 stroke-[3px]" style={{ color: "#16a34a" }} />
+                                  : <XCircle className="size-3.5 stroke-[3px]" style={{ color: "#dc2626" }} />}
+                                <span className={`text-xs font-black ${won ? "text-green-600" : "text-red-600"}`}>{won ? "胜" : "负"}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── 底部标签面板 ── */}
+        <div className="border-4 border-black shadow-[8px_8px_0px_0px_#000] overflow-hidden bg-white">
+          <div className="border-b-4 border-black flex">
+            <button
+              onClick={() => { setBottomTab("versions"); loadVersions() }}
+              className={`flex-1 py-3 text-sm font-black uppercase tracking-widest transition-colors ${
+                bottomTab === "versions" ? "bg-[#FFD93D] border-b-4 border-black" : "text-black/50 hover:text-black hover:bg-white"
+              }`}
+            >
+              版本记录（{versionsLoaded ? versions.length : "…"}）
+            </button>
+            <button
+              onClick={() => setBottomTab("history")}
+              className={`flex-1 py-3 text-sm font-black uppercase tracking-widest transition-colors border-l-4 border-black ${
+                bottomTab === "history" ? "bg-[#FFD93D] border-b-4 border-black" : "text-black/50 hover:text-black hover:bg-white"
+              }`}
+            >
+              对战历史（{tank.battles.length}{tank.battles.length >= 10 ? "+" : ""}）
+            </button>
+          </div>
+
+          {/* 版本记录 */}
+          {bottomTab === "versions" && (
+            <div className="divide-y-4 divide-black">
+              {versionsLoading && (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm font-bold text-black/50">
+                  <Loader2 className="size-4 animate-spin" /> 加载中...
+                </div>
+              )}
+              {!versionsLoading && versions.length === 0 && (
+                <p className="py-12 text-center text-sm font-bold text-black/40">暂无版本记录</p>
+              )}
+              {versions.map((v) => (
+                <div key={v.agent_id} className="border-b-4 border-black px-4 py-4 flex items-start gap-4">
+                  <div className="flex flex-1 flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-2xl">V{v.version}</span>
+                      {v.submitted_by && (
+                        <span className="flex items-center gap-1 border-2 border-black bg-[#C4B5FD] px-1.5 py-0.5 text-xs font-black">
+                          {AI_ICONS[v.submitted_by] ?? "🤖"} {v.submitted_by}
                         </span>
                       )}
                     </div>
+                    <span className="text-xs font-bold text-black/50">
+                      {new Date(v.created_at).toLocaleString("zh-CN")}
+                    </span>
                   </div>
-
-                  <div className="rounded border border-zinc-700 overflow-hidden">
-                    <div className="bg-zinc-800 px-3 py-1.5">
-                      <span className="text-xs font-semibold tracking-widest text-blue-400">GUIDE</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2">
-                      <span className="flex-1 truncate font-mono text-xs text-zinc-300">
-                        {guideUrl}
-                      </span>
-                      <CopyButton text={guideUrl} />
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => setViewingCode(viewingCode?.agent_id === v.agent_id ? null : v)}
+                    className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                  >
+                    {viewingCode?.agent_id === v.agent_id ? "收起" : "查看代码"}
+                  </button>
                 </div>
-              </div>
-            )
-          })()}
-
-          {rightTab === "code" && (
-            <div className="flex flex-col gap-2">
-              <div className="overflow-hidden rounded-lg border border-zinc-800">
-                <div className="border-b border-zinc-800 bg-zinc-900 px-4 py-1.5">
-                  <span className="font-mono text-xs text-zinc-600">agent.js</span>
-                </div>
-                {isOwner ? (
+              ))}
+              {viewingCode && (
+                <div className="border-t-4 border-black">
                   <MonacoEditor
-                    height="320px"
-                    defaultLanguage="javascript"
-                    value={code}
-                    onChange={val => setCode(val ?? "")}
+                    height={300}
+                    language="javascript"
                     theme="vs-dark"
-                    options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 8, bottom: 8 } }}
+                    value={viewingCode.code}
+                    options={{ readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 12, lineNumbers: "on" }}
                   />
-                ) : (
-                  <pre className="overflow-x-auto bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-300">{tank.code}</pre>
-                )}
-              </div>
-              {submitError && <p className="rounded bg-red-950 px-3 py-2 text-xs text-red-400">{submitError}</p>}
-              {submitted && submitResults && (
-                <div className="flex flex-col gap-1.5">
-                  <div className="rounded bg-green-950 px-3 py-2 text-center text-xs font-medium text-green-400">✓ 已更新到排行榜</div>
-                  {submitResults.map(r => {
-                    const won = r.winner === tank.agent_name
-                    return (
-                      <div key={r.opponent} className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2">
-                        <span className="text-xs text-zinc-300">vs {BOT_LABEL[r.opponent] ?? r.opponent}</span>
-                        <div className="flex items-center gap-1.5">
-                          {won ? <CheckCircle className="size-3.5 text-green-400" /> : <XCircle className="size-3.5 text-red-400" />}
-                          <span className={`text-xs font-medium ${won ? "text-green-400" : "text-red-400"}`}>{won ? "胜" : "负"}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               )}
             </div>
           )}
-        </div>
-      </div>
 
-      {/* ── 底部标签 ── */}
-      <div className="rounded-lg border border-zinc-800 overflow-hidden">
-        <div className="flex border-b border-zinc-800 bg-zinc-900">
-          <button
-            onClick={() => setBottomTab("versions")}
-            className={`flex-1 py-3 text-center text-sm font-semibold tracking-widest uppercase transition-colors ${
-              bottomTab === "versions" ? "text-blue-400 border-b-2 border-blue-500" : "text-zinc-500 hover:text-zinc-300"
-            }`}
-            onClickCapture={() => loadVersions()}
-          >
-            版本记录（{versionsLoaded ? versions.length : "…"}）
-          </button>
-          <button
-            onClick={() => setBottomTab("history")}
-            className={`flex-1 py-3 text-center text-sm font-semibold tracking-widest uppercase transition-colors ${
-              bottomTab === "history" ? "text-blue-400 border-b-2 border-blue-500" : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            对战历史（{tank.battles.length}{tank.battles.length >= 10 ? "+" : ""}）
-          </button>
-        </div>
-
-        {/* 版本记录 */}
-        {bottomTab === "versions" && (
-          <div className="divide-y divide-zinc-800">
-            {versionsLoading && (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-zinc-500">
-                <Loader2 className="size-4 animate-spin" /> 加载中...
-              </div>
-            )}
-            {!versionsLoading && versions.length === 0 && (
-              <p className="py-12 text-center text-sm text-zinc-600">暂无版本记录</p>
-            )}
-            {versions.map((v) => (
-              <div key={v.agent_id} className="flex items-start gap-4 px-4 py-4">
-                <div className="flex flex-1 flex-col gap-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">V{v.version}</span>
-                    {v.submitted_by && (
-                      <span className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
-                        {AI_ICONS[v.submitted_by] ?? "🤖"} {v.submitted_by}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-zinc-500">
-                    {new Date(v.created_at).toLocaleString("zh-CN")}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setViewingCode(viewingCode?.agent_id === v.agent_id ? null : v)}
-                  className="shrink-0 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-400 hover:text-white transition-colors"
-                >
-                  {viewingCode?.agent_id === v.agent_id ? "收起" : "查看代码"}
-                </button>
-              </div>
-            ))}
-            {viewingCode && (
-              <div className="border-t border-zinc-800">
-                <MonacoEditor
-                  height={300}
-                  language="javascript"
-                  theme="vs-dark"
-                  value={viewingCode.code}
-                  options={{ readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 12, lineNumbers: "on" }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 对战历史 */}
-        {bottomTab === "history" && (
-        <div className="divide-y divide-zinc-800">
-          {tank.battles.length === 0 ? (
-            <p className="py-12 text-center text-sm text-zinc-600">暂无 PvP 对战记录</p>
-          ) : tank.battles.map(battle => {
-            const won = battle.winner === tank.agent_name
-            return (
-              <div key={battle.id} className="flex items-center gap-4 px-4 py-3">
-                {/* W/L 指示 */}
-                <div className={`relative flex size-12 shrink-0 flex-col items-center justify-center rounded border-2 text-xs font-bold ${won ? "border-blue-600 text-blue-400" : "border-zinc-700 text-zinc-500"}`}>
-                  <div className={`absolute left-0 top-2 bottom-2 w-1 rounded-full ${won ? "bg-blue-600" : "bg-zinc-700"}`} />
-                  <span className="text-base font-black">{won ? "W" : "L"}</span>
-                  <span className="text-[10px] leading-none">{won ? "WIN" : "LOSS"}</span>
-                </div>
-
-                {/* 对阵信息 */}
-                <div className="flex flex-1 flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-bold uppercase tracking-wide text-zinc-200">
-                    {battle.challenger.toUpperCase()} VS {battle.opponent.toUpperCase()}
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    {battle.total_ticks} 回合 · {new Date(battle.created_at).toLocaleString("zh-CN")}
-                  </span>
-                </div>
-
-                {/* 观战按钮 */}
-                <Link
-                  href={`/replay/${battle.id}`}
-                  className="shrink-0 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-400 hover:text-white transition-colors"
-                >
-                  观看回放
-                </Link>
-              </div>
-            )
-          })}
-        </div>
-        )}
-
-      </div>
-
-      {/* ── Manage 模态框 ── */}
-      {manageOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setManageOpen(false) }}
-        >
-          <div
-            ref={manageRef}
-            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-          >
-            {/* 模态头部 */}
-            <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
-              <div className="flex items-center gap-4">
-                <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border-2 border-zinc-600 bg-zinc-800">
-                  <Shield className="size-6 text-zinc-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">管理坦克</h2>
-                  <p className="text-sm text-zinc-500">在此调整策略、个人资料、技能与外观。</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setManageOpen(false)}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:border-zinc-500 hover:text-white transition-colors"
-              >
-                关闭
-              </button>
-            </div>
-
-            {/* 当前坦克信息行 */}
-            <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-800/40 px-5 py-3">
-              <div>
-                <p className="text-xs text-zinc-500">当前坦克</p>
-                <p className="font-bold text-white">{tank.agent_name}</p>
-              </div>
-            </div>
-
-            {/* 内容区 Tab 栏 */}
-            <div className="flex border-b border-zinc-800">
-              {(["profile", "skill", "appearance"] as const).map((t) => {
-                const labels = { profile: "个人资料", skill: "技能", appearance: "外观" }
+          {/* 对战历史 */}
+          {bottomTab === "history" && (
+            <div className="divide-y-4 divide-black">
+              {tank.battles.length === 0 ? (
+                <p className="py-12 text-center text-sm font-bold text-black/40">暂无 PvP 对战记录</p>
+              ) : tank.battles.map(battle => {
+                const won = battle.winner === tank.agent_name
                 return (
-                  <button
-                    key={t}
-                    onClick={() => setManageTab(t)}
-                    className={`flex-1 py-3 text-sm font-semibold transition-colors border-b-2 ${
-                      manageTab === t
-                        ? "border-blue-500 text-white"
-                        : "border-transparent text-zinc-500 hover:text-zinc-300"
-                    }`}
-                  >
-                    {labels[t]}
-                  </button>
+                  <div key={battle.id} className="border-b-4 border-black px-4 py-4 flex items-center gap-4">
+                    {/* W/L 方块 */}
+                    <div
+                      className={`relative flex size-10 shrink-0 items-center justify-center border-4 border-black font-black ${won ? "bg-[#FF6B6B] text-white" : "bg-white text-white"}`}
+                    >
+                      {won ? "W" : "L"}
+                    </div>
+
+                    {/* 对阵信息 */}
+                    <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-black uppercase tracking-wide truncate">
+                        {battle.challenger.toUpperCase()} VS {battle.opponent.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-bold text-black/50">
+                        {battle.total_ticks} 回合 · {new Date(battle.created_at).toLocaleString("zh-CN")}
+                      </span>
+                    </div>
+
+                    {/* 观战按钮 */}
+                    <Link
+                      href={`/replay/${battle.id}`}
+                      className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                    >
+                      观看回放
+                    </Link>
+                  </div>
                 )
               })}
             </div>
+          )}
+        </div>
 
-            {/* Tab 内容 */}
-            <div className="flex-1 overflow-y-auto p-5">
-
-              {/* 个人资料 Tab */}
-              {manageTab === "profile" && (
-                <div className="flex flex-col gap-5">
+        {/* ── Manage 模态框 ── */}
+        {manageOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setManageOpen(false) }}
+          >
+            <div
+              ref={manageRef}
+              className="flex w-full max-w-2xl flex-col overflow-hidden border-4 border-black bg-[#FFFDF5] shadow-[16px_16px_0px_0px_#000]"
+            >
+              {/* 模态头部 */}
+              <div className="flex items-start justify-between gap-4 border-b-4 border-black bg-[#C4B5FD] p-5">
+                <div className="flex items-center gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center border-4 border-black bg-white shadow-[3px_3px_0px_0px_#000]">
+                    <Shield className="size-6 stroke-[3px]" />
+                  </div>
                   <div>
-                    <p className="mb-2 text-sm font-semibold text-zinc-300">重命名坦克</p>
-                    <p className="mb-3 text-xs text-zinc-500">更改名称后，排行榜和对战历史中的显示名称将同步更新。</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={renameTo}
-                        onChange={e => { setRenameTo(e.target.value); setRenameOk(false); setRenameError(null) }}
-                        placeholder={tank.agent_name}
-                        className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <button
-                        onClick={handleRename}
-                        disabled={renaming || renameTo.trim() === tank.agent_name || !renameTo.trim()}
-                        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
-                      >
-                        {renaming ? <Loader2 className="size-3.5 animate-spin" /> : "保存"}
-                      </button>
-                    </div>
-                    {renameError && <p className="mt-2 text-xs text-red-400">{renameError}</p>}
-                    {renameOk && <p className="mt-2 text-xs text-green-400">重命名成功</p>}
+                    <h2 className="text-xl font-black uppercase tracking-tight">管理坦克</h2>
+                    <p className="text-sm font-bold text-black/60">在此调整策略、个人资料、技能与外观。</p>
                   </div>
                 </div>
-              )}
+                <button
+                  onClick={() => setManageOpen(false)}
+                  className="border-4 border-black bg-white p-1.5 shadow-[3px_3px_0px_0px_#000] hover:bg-black hover:text-white active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                >
+                  <X className="size-4 stroke-[3px]" />
+                </button>
+              </div>
 
-              {/* 技能 Tab */}
-              {manageTab === "skill" && (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <div className="text-4xl">⚡</div>
-                  <p className="text-sm font-semibold text-zinc-300">技能系统</p>
-                  <p className="text-xs text-zinc-500">技能功能即将上线，敬请期待。</p>
+              {/* 当前坦克信息行 */}
+              <div className="flex items-center justify-between border-b-4 border-black bg-[#FFD93D] px-5 py-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-black/60">当前坦克</p>
+                  <p className="font-black text-lg">{tank.agent_name}</p>
                 </div>
-              )}
+              </div>
 
-              {/* 外观 Tab */}
-              {manageTab === "appearance" && (
-                <div className="flex flex-col gap-5">
+              {/* Tab 栏 */}
+              <div className="flex border-b-4 border-black">
+                {(["profile", "skill", "appearance"] as const).map((t) => {
+                  const labels = { profile: "个人资料", skill: "技能", appearance: "外观" }
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setManageTab(t)}
+                      className={`flex-1 py-3 text-sm font-black uppercase tracking-wide transition-colors ${
+                        manageTab === t
+                          ? "bg-[#FFD93D] border-b-4 border-black"
+                          : "text-black/50 hover:text-black hover:bg-white"
+                      }`}
+                    >
+                      {labels[t]}
+                    </button>
+                  )
+                })}
+              </div>
 
-                  {/* AI 生成 */}
-                  {isOwner && (
+              {/* Tab 内容 */}
+              <div className="flex-1 overflow-y-auto p-5">
+
+                {/* 个人资料 Tab */}
+                {manageTab === "profile" && (
+                  <div className="flex flex-col gap-5">
                     <div>
-                      <p className="mb-1 text-sm font-semibold text-zinc-300">AI 生成坦克皮肤</p>
-                      <p className="mb-3 text-xs text-zinc-500">用自然语言描述你想要的坦克外观，DeepSeek 将生成专属 SVG 皮肤。</p>
-                      <div className="flex flex-col gap-2">
-                        <textarea
-                          value={skinDesc}
-                          onChange={e => setSkinDesc(e.target.value)}
-                          placeholder="例如：一辆重型工业风坦克，有厚装甲板和宽履带，深灰色涂装，带红色警戒线…"
-                          rows={3}
-                          className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      <p className="mb-2 text-sm font-black uppercase tracking-wide">重命名坦克</p>
+                      <p className="mb-3 text-xs font-bold text-black/60">更改名称后，排行榜和对战历史中的显示名称将同步更新。</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={renameTo}
+                          onChange={e => { setRenameTo(e.target.value); setRenameOk(false); setRenameError(null) }}
+                          placeholder={tank.agent_name}
+                          className="flex-1 border-4 border-black bg-white px-3 py-2 font-bold focus:outline-none focus:bg-[#FFD93D] focus:shadow-[4px_4px_0px_0px_#000] transition-all"
                         />
                         <button
-                          onClick={generateSkin}
-                          disabled={skinGenerating || !skinDesc.trim()}
-                          className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+                          onClick={handleRename}
+                          disabled={renaming || renameTo.trim() === tank.agent_name || !renameTo.trim()}
+                          className="border-4 border-black bg-[#FF6B6B] text-white px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-40 transition-all duration-100"
                         >
-                          {skinGenerating
-                            ? <><Loader2 className="size-4 animate-spin" />生成中…</>
-                            : "✨ AI 生成"}
+                          {renaming ? <Loader2 className="size-3.5 animate-spin" /> : "保存"}
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* 子弹皮肤 */}
-                  {isOwner && (
-                    <div>
-                      <p className="mb-1 text-sm font-semibold text-zinc-300">子弹样式</p>
-                      <p className="mb-3 text-xs text-zinc-500">选择你的坦克在对战回放中发射的弹丸外观。</p>
-                      <div className="grid grid-cols-5 gap-2">
-                        {BULLET_STYLES.map(s => {
-                          const active = (skin.bullet_style ?? "default") === s.value
-                          return (
-                            <button
-                              key={s.value}
-                              onClick={() => setSkin(prev => ({ ...prev, bullet_style: s.value }))}
-                              className={`flex flex-col items-center gap-1.5 rounded-lg border p-2.5 transition-colors ${
-                                active ? "border-blue-500 bg-blue-950/40" : "border-zinc-700 bg-zinc-800/40 hover:border-zinc-500"
-                              }`}
-                            >
-                              <svg viewBox="-10 -10 20 20" width="32" height="32">
-                                {s.shape === "diamond" && (
-                                  <polygon points="0,-7 7,0 0,7 -7,0" fill={s.color} opacity="0.9" />
-                                )}
-                                {s.shape === "star" && (
-                                  <polygon points="0,-7 1.7,-2.3 6.7,-2.2 2.8,0.9 4.1,6 0,3.1 -4.1,6 -2.8,0.9 -6.7,-2.2 -1.7,-2.3" fill={s.color} opacity="0.9" />
-                                )}
-                                {s.shape === "circle" && (
-                                  <>
-                                    {s.value !== "default" && <circle cx="0" cy="0" r="7" fill={s.color} opacity="0.2" />}
-                                    <circle cx="0" cy="0" r="4" fill={s.color} />
-                                  </>
-                                )}
-                              </svg>
-                              <span className="text-[11px] text-zinc-400">{s.label}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 射击效果预览 */}
-                  {isOwner && (
-                    <div>
-                      <p className="mb-2 text-sm font-semibold text-zinc-300">射击效果预览</p>
-                      <BulletFirePreview
-                        bulletStyle={skin.bullet_style ?? "default"}
-                        skinSvg={skin.svg}
-                      />
-                    </div>
-                  )}
-
-                  {/* 坦克皮肤预览 */}
-                  {skin.svg && (
-                    <div>
-                      <p className="mb-2 text-sm font-semibold text-zinc-300">当前皮肤预览</p>
-                      {skin.description && (
-                        <p className="mb-2 text-xs text-zinc-500 italic">"{skin.description}"</p>
+                      {renameError && (
+                        <p className="mt-2 border-2 border-black bg-[#FF6B6B] px-3 py-1.5 text-xs font-black text-white">{renameError}</p>
                       )}
-                      <div className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 p-4">
-                        <svg
-                          viewBox="-20 -14 40 28"
-                          width="200"
-                          height="140"
-                          dangerouslySetInnerHTML={{ __html: skin.svg }}
+                      {renameOk && (
+                        <p className="mt-2 border-2 border-black bg-[#FFD93D] px-3 py-1.5 text-xs font-black">重命名成功</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 技能 Tab */}
+                {manageTab === "skill" && (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <div className="text-4xl">⚡</div>
+                    <p className="text-sm font-black uppercase tracking-wide">技能系统</p>
+                    <p className="text-xs font-bold text-black/50">技能功能即将上线，敬请期待。</p>
+                  </div>
+                )}
+
+                {/* 外观 Tab */}
+                {manageTab === "appearance" && (
+                  <div className="flex flex-col gap-5">
+
+                    {/* AI 生成 */}
+                    {isOwner && (
+                      <div>
+                        <p className="mb-1 text-sm font-black uppercase tracking-wide">AI 生成坦克皮肤</p>
+                        <p className="mb-3 text-xs font-bold text-black/60">用自然语言描述你想要的坦克外观，DeepSeek 将生成专属 SVG 皮肤。</p>
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={skinDesc}
+                            onChange={e => setSkinDesc(e.target.value)}
+                            placeholder="例如：一辆重型工业风坦克，有厚装甲板和宽履带，深灰色涂装，带红色警戒线…"
+                            rows={3}
+                            className="w-full resize-none border-4 border-black bg-white px-3 py-2 font-bold focus:outline-none focus:bg-[#FFD93D] focus:shadow-[4px_4px_0px_0px_#000] transition-all"
+                          />
+                          <button
+                            onClick={generateSkin}
+                            disabled={skinGenerating || !skinDesc.trim()}
+                            className="flex items-center justify-center gap-2 border-4 border-black bg-[#FF6B6B] py-2 text-sm font-black uppercase text-white shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-40 transition-all duration-100"
+                          >
+                            {skinGenerating
+                              ? <><Loader2 className="size-4 animate-spin" />生成中…</>
+                              : "✨ AI 生成"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 子弹样式 */}
+                    {isOwner && (
+                      <div>
+                        <p className="mb-1 text-sm font-black uppercase tracking-wide">子弹样式</p>
+                        <p className="mb-3 text-xs font-bold text-black/60">选择你的坦克在对战回放中发射的弹丸外观。</p>
+                        <div className="grid grid-cols-5 gap-2">
+                          {BULLET_STYLES.map(s => {
+                            const active = (skin.bullet_style ?? "default") === s.value
+                            return (
+                              <button
+                                key={s.value}
+                                onClick={() => setSkin(prev => ({ ...prev, bullet_style: s.value }))}
+                                className={`flex flex-col items-center gap-1.5 border-4 border-black p-2.5 transition-colors ${
+                                  active
+                                    ? "bg-[#FFD93D] shadow-[3px_3px_0px_0px_#000]"
+                                    : "bg-white hover:bg-white shadow-[2px_2px_0px_0px_#000]"
+                                }`}
+                              >
+                                <svg viewBox="-10 -10 20 20" width="32" height="32">
+                                  {s.shape === "diamond" && (
+                                    <polygon points="0,-7 7,0 0,7 -7,0" fill={s.color} opacity="0.9" />
+                                  )}
+                                  {s.shape === "star" && (
+                                    <polygon points="0,-7 1.7,-2.3 6.7,-2.2 2.8,0.9 4.1,6 0,3.1 -4.1,6 -2.8,0.9 -6.7,-2.2 -1.7,-2.3" fill={s.color} opacity="0.9" />
+                                  )}
+                                  {s.shape === "circle" && (
+                                    <>
+                                      {s.value !== "default" && <circle cx="0" cy="0" r="7" fill={s.color} opacity="0.2" />}
+                                      <circle cx="0" cy="0" r="4" fill={s.color} />
+                                    </>
+                                  )}
+                                </svg>
+                                <span className="text-[11px] font-bold">{s.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 射击效果预览 */}
+                    {isOwner && (
+                      <div>
+                        <p className="mb-2 text-sm font-black uppercase tracking-wide">射击效果预览</p>
+                        <BulletFirePreview
+                          bulletStyle={skin.bullet_style ?? "default"}
+                          skinSvg={skin.svg}
                         />
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {!skin.svg && !skinGenerating && (
-                    <div className="flex flex-col items-center gap-2 py-6 text-center text-zinc-600">
-                      <span className="text-3xl">🎨</span>
-                      <p className="text-sm">还没有皮肤，用 AI 生成一个吧</p>
-                    </div>
-                  )}
+                    {/* 坦克皮肤预览 */}
+                    {skin.svg && (
+                      <div>
+                        <p className="mb-2 text-sm font-black uppercase tracking-wide">当前皮肤预览</p>
+                        {skin.description && (
+                          <p className="mb-2 text-xs font-bold text-black/50 italic">"{skin.description}"</p>
+                        )}
+                        <div className="flex items-center justify-center border-4 border-black bg-white p-4 shadow-[4px_4px_0px_0px_#000]">
+                          <svg
+                            viewBox="-20 -14 40 28"
+                            width="200"
+                            height="140"
+                            dangerouslySetInnerHTML={{ __html: skin.svg }}
+                          />
+                        </div>
+                      </div>
+                    )}
 
-                  {skinError && <p className="rounded-lg bg-red-950 px-3 py-2 text-xs text-red-400">{skinError}</p>}
-                </div>
-              )}
-            </div>
+                    {!skin.svg && !skinGenerating && (
+                      <div className="flex flex-col items-center gap-2 py-6 text-center">
+                        <span className="text-3xl">🎨</span>
+                        <p className="text-sm font-bold text-black/50">还没有皮肤，用 AI 生成一个吧</p>
+                      </div>
+                    )}
 
-            {/* 底部操作栏 */}
-            <div className="flex items-center justify-end gap-3 border-t border-zinc-800 px-5 py-4">
-              {skinError && <p className="mr-auto text-xs text-red-400">{skinError}</p>}
-              {skinSaved && !skinGenerating && !skinSaving && <p className="mr-auto text-xs text-green-400">✓ 已保存</p>}
-              <button
-                onClick={() => setManageOpen(false)}
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
-              >
-                关闭
-              </button>
-              {manageTab === "appearance" && isOwner && (
+                    {skinError && (
+                      <p className="border-4 border-black bg-[#FF6B6B] px-3 py-2 text-xs font-black text-white shadow-[2px_2px_0px_0px_#000]">
+                        {skinError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 底部操作栏 */}
+              <div className="flex items-center justify-end gap-3 border-t-4 border-black px-5 py-4">
+                {skinError && <p className="mr-auto text-xs font-black text-red-600">{skinError}</p>}
+                {skinSaved && !skinGenerating && !skinSaving && (
+                  <p className="mr-auto text-xs font-black">✓ 已保存</p>
+                )}
                 <button
-                  onClick={saveSkin}
-                  disabled={skinSaving}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+                  onClick={() => setManageOpen(false)}
+                  className="border-4 border-black bg-white px-4 py-2 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                 >
-                  {skinSaving ? <><Loader2 className="size-3.5 animate-spin" />保存中…</> : "保存外观"}
+                  关闭
                 </button>
-              )}
+                {manageTab === "appearance" && isOwner && (
+                  <button
+                    onClick={saveSkin}
+                    disabled={skinSaving}
+                    className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-5 py-2 text-sm font-black uppercase text-white shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50 transition-all duration-100"
+                  >
+                    {skinSaving ? <><Loader2 className="size-3.5 animate-spin" />保存中…</> : "保存外观"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {shareModal}
+        {shareModal}
 
+      </div>
     </main>
   )
 }

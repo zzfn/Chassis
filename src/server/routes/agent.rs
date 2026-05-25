@@ -118,11 +118,15 @@ async fn agent_submit_code(
     let submitted_by = req.submitted_by;
 
     match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref()).await {
-        Ok(id) => axum::Json(serde_json::json!({
-            "ok": true,
-            "agent_id": id.to_string(),
-            "results": [],
-        })).into_response(),
+        Ok(id) => {
+            let version = db::get_agent_version_number(pool, auth.user_id, &name, id).await.unwrap_or(1);
+            axum::Json(serde_json::json!({
+                "ok":       true,
+                "agent_id": id.to_string(),
+                "version":  version,
+                "results":  [],
+            })).into_response()
+        }
         Err(e) => json_err(500, &e.to_string()),
     }
 }
@@ -323,7 +327,7 @@ async fn agent_challenge(
         Err(e)      => return json_err(500, &e.to_string()),
     };
     let opponent = if body.random_opponent == Some(true) {
-        match db::get_random_opponent(pool, auth.user_id).await {
+        match db::get_random_opponent(pool, auth.user_id, &auth.agent_name).await {
             Ok(Some(o)) => o,
             Ok(None)    => return json_err(404, "暂无其他玩家"),
             Err(e)      => return json_err(500, &e.to_string()),
