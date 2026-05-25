@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DeepTank 一键安装 / 更新脚本（引擎 + 数据库，前端由 Vercel 托管）
-# 用法：curl -sSL https://raw.githubusercontent.com/zzfn/Chassis/main/install.sh | bash
+# 用法：bash <(curl -sSL https://raw.githubusercontent.com/zzfn/Chassis/main/install.sh)
 set -euo pipefail
 
 REPO="zzfn/Chassis"
@@ -15,24 +15,23 @@ success() { echo -e "${GREEN}[deeptank]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[deeptank]${NC} $*"; }
 die()     { echo -e "${RED}[deeptank] 错误:${NC} $*" >&2; exit 1; }
 
-# curl | bash 时 stdin 是管道，必须从 /dev/tty 读取用户输入
 ask() {
   local prompt="$1" default="${2:-}" var
   if [ -n "$default" ]; then
-    printf "${BOLD}%s${NC} [默认: %s]: " "$prompt" "$default" > /dev/tty
+    printf "${BOLD}%s${NC} [默认: %s]: " "$prompt" "$default"
   else
-    printf "${BOLD}%s${NC}: " "$prompt" > /dev/tty
+    printf "${BOLD}%s${NC}: " "$prompt"
   fi
-  read -r var < /dev/tty
-  [ -z "$var" ] && var="$default"
+  read -r var
+  var="${var:-$default}"
   echo "$var"
 }
 
 ask_secret() {
   local prompt="$1" var
-  printf "${BOLD}%s${NC} (留空自动生成): " "$prompt" > /dev/tty
-  read -rs var < /dev/tty
-  echo "" > /dev/tty
+  printf "${BOLD}%s${NC} (留空自动生成): " "$prompt"
+  read -rs var
+  echo ""
   echo "$var"
 }
 
@@ -71,14 +70,39 @@ RELEASE_JSON="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest"
 TAG="$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
 [ -n "$TAG" ] || die "未找到任何 Release，请先推送 tag（git tag v1.0.0 && git push --tags）"
 
-# ── 对比当前版本 ──────────────────────────────────────────────────────────────
+# ── 检测当前版本，提示操作选项 ───────────────────────────────────────────────
 CURRENT=""
-[ -f "$INSTALL_DIR/VERSION" ] && CURRENT="$(cat "$INSTALL_DIR/VERSION")"
-if [ "$CURRENT" = "$TAG" ]; then
-  success "已是最新版本 $TAG，无需更新。"
-  exit 0
+if [ -f "$INSTALL_DIR/VERSION" ]; then CURRENT="$(cat "$INSTALL_DIR/VERSION")"; fi
+
+echo ""
+if [ -n "$CURRENT" ]; then
+  if [ "$CURRENT" = "$TAG" ]; then
+    echo -e "${BOLD}当前版本：${GREEN}$CURRENT${NC}（已是最新）"
+    echo ""
+    echo "  1) 重新安装（覆盖二进制，保留配置）"
+    echo "  2) 退出"
+    CHOICE="$(ask "请选择" "2")"
+    if [ "$CHOICE" != "1" ]; then
+      success "已取消。"
+      exit 0
+    fi
+  else
+    echo -e "${BOLD}当前版本：${YELLOW}$CURRENT${NC}  →  最新版本：${GREEN}$TAG${NC}"
+    echo ""
+    echo "  1) 更新到 $TAG（推荐）"
+    echo "  2) 退出"
+    CHOICE="$(ask "请选择" "1")"
+    if [ "$CHOICE" != "1" ]; then
+      success "已取消。"
+      exit 0
+    fi
+    info "从 $CURRENT 升级到 $TAG"
+  fi
+else
+  echo -e "${BOLD}检测到全新安装，版本：${GREEN}$TAG${NC}"
+  info "开始全新安装..."
 fi
-[ -n "$CURRENT" ] && info "从 $CURRENT 升级到 $TAG" || info "全新安装 $TAG"
+echo ""
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 配置向导（首次安装，升级跳过）
@@ -115,7 +139,7 @@ if [ ! -f "$ENV_FILE" ]; then
   echo -e "${CYAN}▶ JWT 密钥${NC}"
   echo "  用于签发登录 Token，留空自动生成"
   JWT_RAW="$(ask_secret "JWT_SECRET")"
-  [ -z "$JWT_RAW" ] && JWT_RAW="$(gen_secret)" && info "已自动生成 JWT_SECRET"
+  if [ -z "$JWT_RAW" ]; then JWT_RAW="$(gen_secret)"; info "已自动生成 JWT_SECRET"; fi
   echo ""
 
   # ── 端口 ────────────────────────────────────────────────────────────────────
@@ -136,7 +160,7 @@ DATABASE_URL=${DB_URL}
 JWT_SECRET=${JWT_RAW}
 PORT=${ENGINE_PORT}
 ENVEOF
-  [ -n "$DEEPSEEK_KEY" ] && echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> "$ENV_FILE"
+  if [ -n "$DEEPSEEK_KEY" ]; then echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> "$ENV_FILE"; fi
   success ".env 已写入 $ENV_FILE"
 
 else

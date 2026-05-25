@@ -5,7 +5,7 @@
 ## 服务器安装（一键）
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/zzfn/Chassis/main/install.sh | bash
+bash <(curl -sSL https://raw.githubusercontent.com/zzfn/Chassis/main/install.sh)
 ```
 
 脚本会交互式询问数据库、JWT 密钥、端口等配置，自动安装 PostgreSQL 并注册 systemd 服务。**升级时重新执行同一命令即可**，已有 `.env` 不会被覆盖。
