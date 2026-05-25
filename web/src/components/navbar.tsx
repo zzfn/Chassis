@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { getCookie, deleteCookie } from "@/lib/cookie"
+import { Swords } from "lucide-react"
+
+const NAV_ACCENTS = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35", "#7B2FFF"]
 
 const navLinks = [
   { href: "/tanks",        label: "我的坦克" },
@@ -14,9 +17,9 @@ const navLinks = [
 ]
 
 const menuItems = [
-  { label: "成就",     href: "/tanks",      },
-  { label: "设置",     href: "/settings",   },
-  { label: "邀请奖励", href: "/tournament", },
+  { label: "成就",     href: "/tanks"      },
+  { label: "设置",     href: "/settings"   },
+  { label: "邀请奖励", href: "/tournament" },
 ]
 
 export function Navbar() {
@@ -49,70 +52,89 @@ export function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+    <nav
+      className="sticky top-0 z-50 backdrop-blur-md"
+      style={{
+        background: "rgba(13,13,26,0.92)",
+        borderBottom: "4px solid #FF3AF2",
+        boxShadow: "0 4px 24px rgba(255,58,242,0.35)",
+      }}
+    >
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
 
-        {/* 左：Logo + 导航 */}
+        {/* Logo */}
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-lg font-bold tracking-tight text-white">
-            DeepTank
+          <Link href="/" className="flex items-center gap-2">
+            <Swords
+              className="size-5 animate-max-wiggle"
+              style={{ color: "#FF3AF2" }}
+              aria-hidden="true"
+            />
+            <span
+              className="text-gradient-max text-xl font-black uppercase tracking-tight"
+              style={{ fontFamily: "var(--font-outfit)" }}
+            >
+              DeepTank
+            </span>
           </Link>
+
+          {/* Desktop nav */}
           <div className="hidden items-center gap-1 md:flex">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  pathname === link.href
-                    ? "bg-zinc-800 text-white"
-                    : "text-zinc-400 hover:bg-zinc-800/60 hover:text-white"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link, i) => {
+              const active = pathname === link.href
+              const accent = NAV_ACCENTS[i % NAV_ACCENTS.length]
+              return (
+                <NavLink key={link.href} href={link.href} active={active} accent={accent}>
+                  {link.label}
+                </NavLink>
+              )
+            })}
           </div>
         </div>
 
-        {/* 右：用户区 */}
+        {/* User area */}
         <div className="flex items-center gap-3">
           {username ? (
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setOpen(v => !v)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
+                className="rounded-full border-4 border-[#FFE600] px-4 py-1.5 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-105 active:scale-95"
+                style={{
+                  background: "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
+                  boxShadow: "0 0 15px rgba(255,58,242,0.5), 3px 3px 0 #FFE600",
+                }}
               >
                 {username}
               </button>
 
               {open && (
-                <div className="absolute right-0 top-10 z-50 w-52 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-                  <div className="flex flex-col py-1">
-                    {menuItems.map(item => (
-                      <Link
-                        key={item.label}
-                        href={item.href}
-                        onClick={() => setOpen(false)}
-                        className="px-5 py-3.5 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors"
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                    <div className="mx-3 my-1 border-t border-zinc-800" />
-                    <button
-                      onClick={handleLogout}
-                      className="mx-2 mb-2 rounded-lg bg-red-950/50 px-3 py-3 text-left text-sm font-medium text-red-400 hover:bg-red-950 transition-colors"
-                    >
-                      退出登录
-                    </button>
-                  </div>
+                <div
+                  className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-2xl py-1"
+                  style={{
+                    background: "#1A0D2E",
+                    border: "4px solid #7B2FFF",
+                    boxShadow: "8px 8px 0 #FF3AF2, 0 0 20px rgba(123,47,255,0.4)",
+                  }}
+                >
+                  {menuItems.map((item, i) => (
+                    <DropdownItem key={item.label} href={item.href} accent={NAV_ACCENTS[i]} onClick={() => setOpen(false)}>
+                      {item.label}
+                    </DropdownItem>
+                  ))}
+                  <div className="mx-3 my-1 border-t-2 border-dashed border-[#FF3AF2]/40" />
+                  <button
+                    onClick={handleLogout}
+                    className="mx-2 mb-2 w-[calc(100%-16px)] rounded-xl px-3 py-2.5 text-left text-sm font-black uppercase tracking-wide text-[#FF6B35] transition-all duration-150 hover:bg-[#FF6B35]/15"
+                  >
+                    退出登录
+                  </button>
                 </div>
               )}
             </div>
           ) : (
             <Link
               href="/login"
-              className="rounded-md border border-zinc-700 bg-transparent px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+              className="rounded-full border-4 border-dashed border-[#00F5D4] px-4 py-1.5 text-sm font-black uppercase tracking-widest text-[#00F5D4] transition-all duration-200 hover:bg-[#00F5D4]/10 hover:scale-105"
             >
               登录
             </Link>
@@ -121,5 +143,89 @@ export function Navbar() {
 
       </div>
     </nav>
+  )
+}
+
+/* ── Sub-components ── */
+
+function NavLink({
+  href,
+  active,
+  accent,
+  children,
+}: {
+  href: string
+  active: boolean
+  accent: string
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-full px-4 py-2 text-sm font-black uppercase tracking-widest transition-all duration-200"
+      style={
+        active
+          ? {
+              color: accent,
+              background: `${accent}18`,
+              border: `2px solid ${accent}`,
+              textShadow: `0 0 10px ${accent}80`,
+            }
+          : {
+              color: "rgba(255,255,255,0.55)",
+              border: "2px solid transparent",
+            }
+      }
+      onMouseEnter={e => {
+        if (!active) {
+          const el = e.currentTarget as HTMLElement
+          el.style.color = accent
+          el.style.borderColor = `${accent}50`
+          el.style.background = `${accent}10`
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          const el = e.currentTarget as HTMLElement
+          el.style.color = "rgba(255,255,255,0.55)"
+          el.style.borderColor = "transparent"
+          el.style.background = "transparent"
+        }
+      }}
+    >
+      {children}
+    </Link>
+  )
+}
+
+function DropdownItem({
+  href,
+  accent,
+  onClick,
+  children,
+}: {
+  href: string
+  accent: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className="block px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition-all duration-150"
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.background = `${accent}20`
+        el.style.color = accent
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.background = "transparent"
+        el.style.color = "white"
+      }}
+    >
+      {children}
+    </Link>
   )
 }
