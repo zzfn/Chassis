@@ -18,20 +18,20 @@ die()     { echo -e "${RED}[deeptank] 错误:${NC} $*" >&2; exit 1; }
 ask() {
   local prompt="$1" default="${2:-}" var
   if [ -n "$default" ]; then
-    printf "${BOLD}%s${NC} [默认: %s]: " "$prompt" "$default"
+    printf "${BOLD}%s${NC} [默认: %s]: " "$prompt" "$default" >/dev/tty
   else
-    printf "${BOLD}%s${NC}: " "$prompt"
+    printf "${BOLD}%s${NC}: " "$prompt" >/dev/tty
   fi
-  read -r var
+  read -r var </dev/tty
   var="${var:-$default}"
   echo "$var"
 }
 
 ask_secret() {
   local prompt="$1" var
-  printf "${BOLD}%s${NC} (留空自动生成): " "$prompt"
-  read -rs var
-  echo ""
+  printf "${BOLD}%s${NC} (留空自动生成): " "$prompt" >/dev/tty
+  read -rs var </dev/tty
+  echo "" >/dev/tty
   echo "$var"
 }
 
@@ -278,7 +278,11 @@ echo -e "${GREEN}${BOLD}══════════════════�
 echo -e "${GREEN}${BOLD}  DeepTank $TAG 安装完成！${NC}"
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════${NC}"
 echo ""
-echo "  引擎 API ：http://localhost:${ENGINE_PORT}"
+PUBLIC_IP="$(curl -sf --max-time 3 https://checkip.amazonaws.com || \
+             curl -sf --max-time 3 https://api.ipify.org || \
+             hostname -I 2>/dev/null | awk '{print $1}' || \
+             echo "localhost")"
+echo "  引擎 API ：http://${PUBLIC_IP}:${ENGINE_PORT}"
 echo "  配置文件 ：$ENV_FILE"
 echo ""
 echo "  常用命令："
