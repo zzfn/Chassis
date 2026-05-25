@@ -19,7 +19,6 @@ const navLinks = [
 const menuItems = [
   { label: "成就",     href: "/tanks"      },
   { label: "设置",     href: "/settings"   },
-  { label: "邀请奖励", href: "/tournament" },
 ]
 
 export function Navbar() {
