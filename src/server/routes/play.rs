@@ -2,7 +2,7 @@
 /// 玩家通过键盘命令操控自己的坦克，与内置 Rusher bot 实时对战。
 
 use axum::{
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
     response::IntoResponse,
     routing::get,
     Router,
@@ -26,13 +26,26 @@ pub(crate) fn router() -> Router<AppState> {
 
 // ── WebSocket 升级入口 ────────────────────────────────────────────────────────
 
-async fn ws_play_upgrade(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(play_game)
+async fn ws_play_upgrade(
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+) -> axum::response::Response {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        state.battle_sem.clone().acquire_owned(),
+    ).await {
+        Ok(Ok(permit)) => ws.on_upgrade(move |socket| play_game(socket, permit)).into_response(),
+        _ => axum::response::Response::builder()
+            .status(503)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(r#"{"error":"服务器繁忙，请稍后再试"}"#))
+            .unwrap(),
+    }
 }
 
 // ── WebSocket 主处理器 ────────────────────────────────────────────────────────
 
-async fn play_game(mut socket: WebSocket) {
+async fn play_game(mut socket: WebSocket, _permit: tokio::sync::OwnedSemaphorePermit) {
     // cmd_tx：前端 → 游戏（TankCommand），缓冲 5 条
     let (cmd_tx, cmd_rx) = mpsc::channel::<physics::TankCommand>(5);
     // frame_tx：游戏 → 前端（JSON 字符串），缓冲 16 帧防卡顿
@@ -442,11 +455,9 @@ fn run_game_loop(
                 poisoned:     t.status.poisoned   > 0,
                 boosted:      t.status.boosted    > 0,
             }).collect(),
-            bullets: state.bullets.iter().filter(|b| b.active).map(|b| battle::BulletSnapshot {
-                id:       b.id,
-                x:        b.pixel_x(),
-                y:        b.pixel_y(),
-                owner_id: b.owner,
+            bullets: state.bullets.iter().filter(|b| b.active).map(|b| {
+                let (vx, vy) = b.facing.delta();
+                battle::BulletSnapshot { id: b.id, x: b.pixel_x(), y: b.pixel_y(), owner_id: b.owner, vx, vy }
             }).collect(),
             stars: state.stars.iter().map(|s| battle::StarSnapshot {
                 x: s.x as f64 * physics::TILE_SIZE + physics::TILE_SIZE / 2.0,

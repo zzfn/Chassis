@@ -38,6 +38,8 @@ pub struct BulletSnapshot {
     pub x: f64,
     pub y: f64,
     pub owner_id: usize,
+    pub vx: i32,
+    pub vy: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,9 +246,6 @@ impl ArenaEngine {
             }
 
             // ── 4a. 处理技能命令 ────────────────────────────────────────
-            let summaries_for_skill: Vec<physics::TankSummary> = self.agents.iter()
-                .map(|(t, _)| t.as_summary())
-                .collect();
 
             for i in 0..self.agents.len() {
                 if !matches!(this_turn_cmds[i], Some(TankCommand::UseSkill(_))) { continue; }
@@ -264,7 +263,7 @@ impl ArenaEngine {
 
                 // 寻找最近敌人
                 let me = &self.agents[i].0;
-                let nearest_enemy_id: Option<usize> = summaries_for_skill.iter()
+                let nearest_enemy_id: Option<usize> = summaries.iter()
                     .filter(|s| s.alive && s.team_id != me.team_id)
                     .min_by_key(|s| {
                         (s.x as i32 - me.x as i32).unsigned_abs() + (s.y as i32 - me.y as i32).unsigned_abs()
@@ -313,7 +312,7 @@ impl ArenaEngine {
                                 let tank_name = self.agents[i].0.name.clone();
                                 battle_log.push(format!("[Turn {:04}] {} 传送至 ({},{})！", turn, tank_name, tx, ty));
                                 // 若传送后距敌人曼哈顿距离 ≤ 4，则锁定射击 2 帧
-                                let near_enemy = summaries_for_skill.iter()
+                                let near_enemy = summaries.iter()
                                     .any(|s| s.alive && s.team_id != self.agents[i].0.team_id
                                         && (s.x as i32 - tx as i32).unsigned_abs() + (s.y as i32 - ty as i32).unsigned_abs() <= 4);
                                 if near_enemy {
@@ -535,8 +534,9 @@ impl ArenaEngine {
                     poisoned:   t.status.poisoned   > 0,
                     boosted:    t.status.boosted    > 0,
                 }).collect(),
-                bullets: self.bullets.iter().filter(|b| b.active).map(|b| BulletSnapshot {
-                    id: b.id, x: b.pixel_x(), y: b.pixel_y(), owner_id: b.owner,
+                bullets: self.bullets.iter().filter(|b| b.active).map(|b| {
+                    let (vx, vy) = b.facing.delta();
+                    BulletSnapshot { id: b.id, x: b.pixel_x(), y: b.pixel_y(), owner_id: b.owner, vx, vy }
                 }).collect(),
                 stars: self.stars.iter().map(|s| StarSnapshot {
                     x: s.x as f64 * physics::TILE_SIZE + physics::TILE_SIZE / 2.0,
