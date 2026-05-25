@@ -70,7 +70,7 @@ export default function RegisterPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-xl text-white">注册</CardTitle>
           <CardDescription className="text-zinc-400">
-            创建你的 Chassis 账户，参与 AI 坦克对战
+            创建你的 DeepTank 账户，参与 AI 坦克对战
           </CardDescription>
         </CardHeader>
         <CardContent>

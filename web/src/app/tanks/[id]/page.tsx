@@ -795,7 +795,7 @@ export default function TankDetailPage() {
             const origin = typeof window !== "undefined" ? window.location.origin : ""
             const guideUrl = `${origin}/agent-guide`
             const keyValue = apiKey?.key ?? "<在下方点击「生成密钥」后填入>"
-            const fullPrompt = `你正在协助玩家迭代 Chassis 坦克竞技场的 AI 坦克 agent。
+            const fullPrompt = `你正在协助玩家迭代 DeepTank 坦克竞技场的 AI 坦克 agent。
 
 【任务】
 为坦克 "${tank.agent_name}" 编写或改进 JavaScript 策略代码（onIdle 函数），目标是提升对战胜率。

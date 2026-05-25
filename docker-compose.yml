@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: chassis
-      POSTGRES_USER: chassis
-      POSTGRES_PASSWORD: chassis
+      POSTGRES_DB: deeptank
+      POSTGRES_USER: deeptank
+      POSTGRES_PASSWORD: deeptank
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chassis"]
+      test: ["CMD-SHELL", "pg_isready -U deeptank"]
       interval: 5s
       timeout: 5s
       retries: 5

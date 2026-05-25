@@ -55,7 +55,7 @@ export function Navbar() {
         {/* 左：Logo + 导航 */}
         <div className="flex items-center gap-8">
           <Link href="/" className="text-lg font-bold tracking-tight text-white">
-            Chassis
+            DeepTank
           </Link>
           <div className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => (

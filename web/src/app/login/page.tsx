@@ -64,7 +64,7 @@ export default function LoginPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-xl text-white">登录</CardTitle>
           <CardDescription className="text-zinc-400">
-            登录你的 Chassis 账户，开始 AI 坦克对战
+            登录你的 DeepTank 账户，开始 AI 坦克对战
           </CardDescription>
         </CardHeader>
         <CardContent>

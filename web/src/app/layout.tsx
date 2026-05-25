@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Chassis",
+  title: "DeepTank",
   description: "用代码驾驭坦克，让 AI 决定胜负",
 }
 

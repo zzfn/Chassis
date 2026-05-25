@@ -52,11 +52,10 @@ var me = {
     },
     fire: function() { __queue.push("fire"); },
     speak: function(text) {},
-    stars: [],
     bullet: null,
 };
 var enemy = null;
-var game = { map: [], star: null, frames: 0 };
+var game = { map: [], stars: [], star: null, frames: 0 };
 "#;
 
 /// 单次对战中某辆坦克的 JS 执行统计快照
@@ -210,7 +209,7 @@ impl QuickJsSandbox {
                 sa.set(1, *sy as i32).map_err(|e| e.to_string())?;
                 stars_arr.set(i, sa).map_err(|e| e.to_string())?;
             }
-            me_obj.set("stars", stars_arr).map_err(|e| e.to_string())?;
+            game_obj.set("stars", stars_arr).map_err(|e| e.to_string())?;
             game_obj.set("frames", sensors.frame as i32).map_err(|e| e.to_string())?;
             if let Some((sx, sy)) = sensors.stars.first() {
                 let star_arr = Array::new(ctx.clone()).map_err(|e| e.to_string())?;

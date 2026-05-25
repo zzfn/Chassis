@@ -348,7 +348,7 @@ export default function HomePage() {
             </div>
             <HighlightedCode code={SAMPLE_CODE} />
             <div className="border-t border-zinc-800 bg-zinc-900/40 px-5 py-2.5 font-mono text-[11px] text-zinc-500">
-              <span className="text-emerald-400">$</span> chassis run agent.js{" "}
+              <span className="text-emerald-400">$</span> deeptank run agent.js{" "}
               <motion.span
                 className="text-blue-400"
                 animate={reduce ? undefined : { opacity: [1, 0, 1] }}

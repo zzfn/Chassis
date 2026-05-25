@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-**Chassis** 是一个坦克竞技场仿真引擎：用户用 JavaScript 编写 AI 坦克 agent，Rust 引擎在 QuickJS 沙箱中执行 JS，输出逐帧遥测数据供 Next.js 前端回放。
+\*\*DeepTank\*\* 是一个坦克竞技场仿真引擎：用户用 JavaScript 编写 AI 坦克 agent，Rust 引擎在 QuickJS 沙箱中执行 JS，输出逐帧遥测数据供 Next.js 前端回放。
 
 ## 常用命令
 
@@ -64,13 +64,13 @@ cd web && npm run lint
 function onIdle(me, enemy, game) {
   // me.tank = {
   //   position: [col, row],  // tile 坐标，0=左/上
-  //   facing: "east",        // "north" | "east" | "south" | "west"
+  //   direction: "east",     // "north" | "east" | "south" | "west"
   //   hp: 100,
   //   score: 0,
   //   shootCooldown: 0,      // 0 = 可射击
   // }
-  // enemy = null | { tank: { position, facing, hp } }  最近存活敌人
-  // game  = { map: string[], stars: [[col,row],...], frame: number }
+  // enemy = null | { tank: { position, direction, hp } }  最近存活敌人
+  // game  = { map: string[], stars: [[col,row],...], star: [col,row]|null, frames: number }
 
   me.go();          // 前进 1 格（可选参数 n，最多 10）
   me.turn("left");  // 左转 90°

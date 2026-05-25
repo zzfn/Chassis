@@ -165,33 +165,58 @@ function matchBullets(prev: BulletSnapshot[], curr: BulletSnapshot[]): (BulletSn
   return curr.map(b => prevById.get(b.id) ?? null)
 }
 
-// ── 地图 Graphics 绘制（同步，无异步纹理加载） ────────────────
-function drawTile(g: PIXI.Graphics, ch: string, px: number, py: number) {
-  switch (ch) {
-    case '.': // 地板
-      g.beginFill(0x1c1c20).drawRect(px, py, TS, TS).endFill()
-      g.beginFill(0x1f1f24, 0.7).drawRect(px, py, TS / 2, TS / 2).endFill()
-      g.beginFill(0x1f1f24, 0.7).drawRect(px + TS / 2, py + TS / 2, TS / 2, TS / 2).endFill()
-      break
-    case 'x': // 墙
-      g.beginFill(0x3c3c48).drawRect(px, py, TS, TS).endFill()
-      g.beginFill(0x4a4a5a).drawRect(px + 1, py + 1, TS - 2, TS * 0.45).endFill()
-      g.beginFill(0x2a2a34).drawRect(px, py + TS - 2, TS, 2).endFill()
-      break
-    case 'm': // 土堆
-      g.beginFill(0x7c3414).drawRect(px, py, TS, TS).endFill()
-      g.beginFill(0x9a4a25, 0.8).drawCircle(px + TS * 0.25, py + TS * 0.3, TS * 0.18).endFill()
-      g.beginFill(0x5c2008, 0.7).drawCircle(px + TS * 0.7,  py + TS * 0.25, TS * 0.14).endFill()
-      g.beginFill(0x9a4a25, 0.6).drawCircle(px + TS * 0.8,  py + TS * 0.7,  TS * 0.22).endFill()
-      break
-    case 'o': // 草丛
-      g.beginFill(0x14532d).drawRect(px, py, TS, TS).endFill()
-      g.beginFill(0x0f4a25, 0.9).drawCircle(px + TS * 0.25, py + TS * 0.55, TS * 0.4).endFill()
-      g.beginFill(0x1a6535, 0.7).drawCircle(px + TS * 0.6,  py + TS * 0.35, TS * 0.35).endFill()
-      break
-    default:
-      g.beginFill(0x1c1c20).drawRect(px, py, TS, TS).endFill()
-  }
+// ── 地图 SVG 贴图 ────────────────────────────────────────────
+const TILE_SVGS: Record<string, string> = {
+  '.': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="#1c1c20"/>
+    <rect width="20" height="20" fill="#1f1f26" opacity="0.7"/>
+    <rect x="20" y="20" width="20" height="20" fill="#1f1f26" opacity="0.7"/>
+    <line x1="0" y1="0" x2="40" y2="0" stroke="#26262c" stroke-width="0.6"/>
+    <line x1="0" y1="0" x2="0" y2="40" stroke="#26262c" stroke-width="0.6"/>
+  </svg>`,
+  'x': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="#3c3c4a"/>
+    <rect x="1" y="1" width="38" height="18" fill="#4e4e60"/>
+    <rect y="38" width="40" height="2" fill="#282834"/>
+    <rect x="38" width="2" height="40" fill="#28283a"/>
+    <polyline points="9,3 11,16 8,19" fill="none" stroke="#2a2a38" stroke-width="1.2" opacity="0.65"/>
+    <polyline points="26,2 24,13 27,17" fill="none" stroke="#2a2a38" stroke-width="1" opacity="0.55"/>
+    <line x1="16" y1="22" x2="14" y2="36" stroke="#2a2a38" stroke-width="1" opacity="0.5"/>
+  </svg>`,
+  'm': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="#6b2c10"/>
+    <ellipse cx="20" cy="22" rx="15" ry="12" fill="#9a4a25"/>
+    <ellipse cx="17" cy="17" rx="8" ry="6" fill="#b56030" opacity="0.65"/>
+    <ellipse cx="22" cy="28" rx="12" ry="5" fill="#4e1e06" opacity="0.6"/>
+    <circle cx="13" cy="16" r="3" fill="#833a1a" opacity="0.75"/>
+    <circle cx="28" cy="21" r="3.5" fill="#6a2e0e" opacity="0.7"/>
+    <circle cx="20" cy="11" r="2.5" fill="#ac5030" opacity="0.55"/>
+  </svg>`,
+  'o': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="#1e3d12"/>
+    <rect width="20" height="20" fill="#162e0c" opacity="0.35"/>
+    <rect x="20" y="20" width="20" height="20" fill="#162e0c" opacity="0.35"/>
+    <circle cx="12" cy="27" r="2.5" fill="#0c1e07" opacity="0.7"/>
+    <polygon points="12,27 9,16 15,16" fill="#52c228" opacity="0.93"/>
+    <polygon points="12,27 3,22 7,28" fill="#3fa81c" opacity="0.93"/>
+    <polygon points="12,27 16,16 20,22" fill="#62d836" opacity="0.93"/>
+    <polygon points="12,27 5,28 6,20" fill="#48b822" opacity="0.88"/>
+    <polygon points="12,27 19,28 18,20" fill="#3d9414" opacity="0.88"/>
+    <polygon points="12,27 11,16 14,16" fill="#56b424" opacity="0.85"/>
+    <circle cx="29" cy="13" r="2.2" fill="#0c1e07" opacity="0.7"/>
+    <polygon points="29,13 26,3 32,3" fill="#4ab820" opacity="0.93"/>
+    <polygon points="29,13 21,8 25,14" fill="#3d9414" opacity="0.93"/>
+    <polygon points="29,13 33,3 37,8" fill="#5cc230" opacity="0.93"/>
+    <polygon points="29,13 23,14 24,6" fill="#44a81a" opacity="0.88"/>
+    <polygon points="29,13 36,14 35,6" fill="#3d9414" opacity="0.88"/>
+  </svg>`,
+}
+
+function makeTileSprite(ch: string, px: number, py: number): PIXI.Sprite {
+  const svg = TILE_SVGS[ch] ?? TILE_SVGS['.']
+  const sp  = PIXI.Sprite.from(svgUrl(svg))
+  sp.x = px; sp.y = py; sp.width = TS; sp.height = TS
+  return sp
 }
 
 // ── PixiView ──────────────────────────────────────────────────
@@ -252,17 +277,27 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
     })
     el.appendChild(app.view as HTMLCanvasElement)
 
-    // ── 地图（同步 Graphics，无异步加载）──────────────────
-    const mapG = new PIXI.Graphics()
+    // ── 地图（SVG Sprite 贴图）───────────────────────────
+    const mapC = new PIXI.Container()
     data.arena.map.forEach((row, r) =>
-      row.split('').forEach((ch, c) => drawTile(mapG, ch, c * TS, r * TS))
+      row.split('').forEach((ch, c) => mapC.addChild(makeTileSprite(ch, c * TS, r * TS)))
     )
-    app.stage.addChild(mapG)
+    app.stage.addChild(mapC)
 
     // ── 图层 ────────────────────────────────────────────
     const starLayer   = new PIXI.Container(); app.stage.addChild(starLayer);   sLayer.current = starLayer
     const bulletLayer = new PIXI.Container(); app.stage.addChild(bulletLayer); bLayer.current = bulletLayer
     const tankLayer   = new PIXI.Container(); app.stage.addChild(tankLayer)
+
+    // 草地覆盖层（在坦克层上方，草叶半透明遮住坦克）
+    const grassOverlay = new PIXI.Container()
+    grassOverlay.alpha = 0.62
+    data.arena.map.forEach((row, r) =>
+      row.split('').forEach((ch, c) => {
+        if (ch === 'o') grassOverlay.addChild(makeTileSprite('o', c * TS, r * TS))
+      })
+    )
+    app.stage.addChild(grassOverlay)
 
     // ── 坦克容器 ─────────────────────────────────────────
     data.telemetry[0]?.tanks.forEach(t => {
@@ -366,7 +401,8 @@ function PixiView({ data, playing, seekFn, onTick, onEnd }: PixiViewProps) {
         const fy = pt ? pt.y * S : t.y * S
         sp.root.x = fx + (t.x * S - fx) * alpha
         sp.root.y = fy + (t.y * S - fy) * alpha
-        sp.root.alpha = t.alive ? 1 : 0.2
+        // 草地里的坦克由上方覆盖层遮挡，本体保持正常 alpha
+        sp.root.alpha = t.alive ? 1 : 0.15
 
         // 角度插值（处理 ±π 跳变）
         const fa = pt ? pt.body_angle : t.body_angle

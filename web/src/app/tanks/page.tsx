@@ -17,37 +17,68 @@ import {
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 
-const DEFAULT_CODE = `// 你的第一辆坦克 —— v0 入门版
-// 引擎在命令队列为空时调用 onIdle(me, enemy, game)。
-// 排队的命令会逐帧执行，每帧 1 条。
+const DEFAULT_CODE = `// 入门模板：对齐后射击，遇墙换轴
 function onIdle(me, enemy, game) {
-  // 场上没有存活敌人时，原地右转继续观察
-  if (!enemy) {
-    me.turn("right");
+  if (!enemy) { me.turn("right"); return; }
+
+  var mx = me.tank.position[0], my = me.tank.position[1];
+  var ex = enemy.tank.position[0], ey = enemy.tank.position[1];
+  var dx = ex - mx, dy = ey - my;
+  var dirs = ["north","east","south","west"];
+  var ddx  = [0, 1, 0,-1];
+  var ddy  = [-1, 0, 1, 0];
+
+  function turnTo(want) {
+    if (me.tank.direction === want) return false;
+    var diff = (dirs.indexOf(want) - dirs.indexOf(me.tank.direction) + 4) % 4;
+    me.turn(diff <= 2 ? "right" : "left");
+    return true;
+  }
+
+  // 检查某方向是否可通行
+  function free(dir) {
+    var i = dirs.indexOf(dir);
+    var nx = mx + ddx[i], ny = my + ddy[i];
+    var row = game.map[ny];
+    return !!(row && (row[nx] === "." || row[nx] === "o"));
+  }
+
+  // 已在同列：对准敌人方向，能通行则射击并前进，否则侧移换列
+  if (dx === 0) {
+    var w = dy > 0 ? "south" : "north";
+    if (turnTo(w)) return;
+    if (free(w)) {
+      if (me.tank.shootCooldown === 0) me.fire();
+      if (Math.abs(dy) > 1) me.go();
+    } else {
+      me.turn("right"); // 路被墙堵，侧移换一列
+    }
     return;
   }
 
-  // 计算敌人相对自身的偏移（tile 坐标）
-  var dx = enemy.tank.position[0] - me.tank.position[0];
-  var dy = enemy.tank.position[1] - me.tank.position[1];
-
-  // 选一个朝向：哪个轴上距离更远，就先对准那个轴
-  var want;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    want = dx > 0 ? "east" : "west";
-  } else {
-    want = dy > 0 ? "south" : "north";
-  }
-
-  // 还没对准：右转 90°，最多 3 次就能转到任意朝向
-  if (me.tank.direction !== want) {
-    me.turn("right");
+  // 已在同行：对准敌人方向，能通行则射击并前进，否则换行
+  if (dy === 0) {
+    var w = dx > 0 ? "east" : "west";
+    if (turnTo(w)) return;
+    if (free(w)) {
+      if (me.tank.shootCooldown === 0) me.fire();
+      if (Math.abs(dx) > 1) me.go();
+    } else {
+      me.turn("right");
+    }
     return;
   }
 
-  // 已对准敌人方向：冷却好就开火，然后推进 1 格
-  if (me.tank.shootCooldown === 0) me.fire();
-  me.go();
+  // 未对齐：优先消除较短轴偏差（快速进入同行/同列），若被堵则走另一轴
+  var shortDir = Math.abs(dx) <= Math.abs(dy)
+    ? (dx > 0 ? "east" : "west")
+    : (dy > 0 ? "south" : "north");
+  var longDir = Math.abs(dx) <= Math.abs(dy)
+    ? (dy > 0 ? "south" : "north")
+    : (dx > 0 ? "east" : "west");
+  var chosen = free(shortDir) ? shortDir : (free(longDir) ? longDir : shortDir);
+  if (turnTo(chosen)) return;
+  if (free(chosen)) me.go(); else me.turn("right");
 }`
 
 interface TankSkin {

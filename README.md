@@ -1,4 +1,4 @@
-# Chassis — 坦克竞技场仿真引擎
+# DeepTank — 坦克竞技场仿真引擎
 
 用 JavaScript 编写 AI 坦克 agent，在 20×20 格子地图上进行回合制对战。Rust 引擎在 QuickJS 沙箱中执行 JS 代码，输出逐帧遥测数据供 Next.js 前端实时回放。
 
@@ -15,7 +15,7 @@
 ```bash
 # 克隆项目
 git clone <repo-url>
-cd chassis
+cd deeptank
 
 # 配置环境变量
 cp .env.example .env
@@ -125,7 +125,7 @@ Content-Type: application/json
 ## 项目结构
 
 ```
-chassis/
+deeptank/
 ├── agents/          # 内置 bot JS 文件
 ├── src/
 │   ├── main.rs      # 入口（CLI 解析）
@@ -148,8 +148,8 @@ chassis/
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DATABASE_URL` | `postgres://chassis:chassis@localhost:5432/chassis` | PostgreSQL 连接串 |
-| `JWT_SECRET` | `chassis-secret` | JWT 签名密钥 |
+| `DATABASE_URL` | `postgres://deeptank:deeptank@localhost:5432/deeptank` | PostgreSQL 连接串 |
+| `JWT_SECRET` | `deeptank-secret` | JWT 签名密钥 |
 | `DEEPSEEK_API_KEY` | — | AI 生成坦克皮肤（可选）|
 
 ## 开发命令

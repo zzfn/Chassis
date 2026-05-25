@@ -1,10 +1,10 @@
 [package]
-name = "chassis"
+name = "deeptank"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "chassis"
+name = "deeptank"
 path = "src/main.rs"
 
 [dependencies]
