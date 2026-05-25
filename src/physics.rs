@@ -138,6 +138,7 @@ pub struct TankSummary {
     pub alive: bool,
     pub score: u32,
     pub shoot_cooldown: u32,
+    pub team_id: usize,
 }
 
 pub struct TankState {
@@ -151,10 +152,11 @@ pub struct TankState {
     pub shoot_cooldown: u32,
     pub score: u32,
     pub command_queue: VecDeque<TankCommand>,
+    pub team_id: usize,
 }
 
 impl TankState {
-    pub fn new(id: usize, name: &str, x: usize, y: usize, facing: Facing) -> Self {
+    pub fn new(id: usize, name: &str, x: usize, y: usize, facing: Facing, team_id: usize) -> Self {
         Self {
             id, name: name.to_string(),
             x, y, facing,
@@ -163,6 +165,7 @@ impl TankState {
             shoot_cooldown: 0,
             score: 0,
             command_queue: VecDeque::new(),
+            team_id,
         }
     }
 
@@ -171,6 +174,7 @@ impl TankState {
             id: self.id, x: self.x, y: self.y,
             facing: self.facing, hp: self.hp, alive: self.alive,
             score: self.score, shoot_cooldown: self.shoot_cooldown,
+            team_id: self.team_id,
         }
     }
 
@@ -202,6 +206,7 @@ pub struct Star {
 pub struct SensorData {
     pub me: TankSummary,
     pub enemies: Vec<EnemySensor>,
+    pub allies: Vec<AllySensor>,
     pub map: Map,
     pub stars: Vec<(usize, usize)>,
     pub frame: u32,
@@ -210,6 +215,15 @@ pub struct SensorData {
 
 #[derive(Clone)]
 pub struct EnemySensor {
+    pub id: usize,
+    pub x: usize,
+    pub y: usize,
+    pub facing: Facing,
+    pub hp: i32,
+}
+
+#[derive(Clone)]
+pub struct AllySensor {
     pub id: usize,
     pub x: usize,
     pub y: usize,
@@ -290,13 +304,24 @@ pub fn compute_sensors(
     frame: u32,
     bullets: &[Bullet],
 ) -> SensorData {
+    // 敌人：存活 && team_id 不同
     let mut enemies: Vec<EnemySensor> = others.iter()
-        .filter(|t| t.alive)
+        .filter(|t| t.alive && t.team_id != me.team_id)
         .map(|t| EnemySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp })
         .collect();
     // 按曼哈顿距离排序
     enemies.sort_by_key(|e| {
         (e.x as i32 - me.x as i32).unsigned_abs() + (e.y as i32 - me.y as i32).unsigned_abs()
+    });
+
+    // 队友：存活 && team_id 相同 && id 不同
+    let mut allies: Vec<AllySensor> = others.iter()
+        .filter(|t| t.alive && t.team_id == me.team_id && t.id != me.id)
+        .map(|t| AllySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp })
+        .collect();
+    // 按曼哈顿距离排序
+    allies.sort_by_key(|a| {
+        (a.x as i32 - me.x as i32).unsigned_abs() + (a.y as i32 - me.y as i32).unsigned_abs()
     });
 
     let bullet_sensors: Vec<BulletSensor> = bullets.iter()
@@ -307,6 +332,7 @@ pub fn compute_sensors(
     SensorData {
         me: me.clone(),
         enemies,
+        allies,
         map: map.clone(),
         stars: stars.iter().map(|s| (s.x, s.y)).collect(),
         frame,

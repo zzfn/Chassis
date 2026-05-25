@@ -183,8 +183,9 @@ fn run_game_loop(
     let (px, py, pf) = physics::start_positions(0); // 玩家：(1,1,East)
     let (rx, ry, rf) = physics::start_positions(1); // Rusher：(18,18,West)
 
-    let player_tank = physics::TankState::new(0, "玩家", px, py, pf);
-    let rusher_tank = physics::TankState::new(1, "Rusher", rx, ry, rf);
+    // 玩家 id=0 → team_id=0；Rusher id=1 → team_id=1
+    let player_tank = physics::TankState::new(0, "玩家", px, py, pf, 0);
+    let rusher_tank = physics::TankState::new(1, "Rusher", rx, ry, rf, 1);
 
     // 初始化 Rusher 沙箱（只在此线程内创建，不跨线程传递）
     let rusher_sandbox = match QuickJsSandbox::new("Rusher", RUSHER_JS) {
@@ -346,8 +347,9 @@ fn run_game_loop(
         state.bullets.extend(new_bullets);
 
         // ── 6. 推进子弹（每颗前进 BULLET_SPEED 格）────────────────────────────
-        let tank_pos: Vec<(usize, usize, usize, bool)> = state.tanks.iter()
-            .map(|t| (t.id, t.x, t.y, t.alive))
+        // (id, x, y, alive, team_id)
+        let tank_pos: Vec<(usize, usize, usize, bool, usize)> = state.tanks.iter()
+            .map(|t| (t.id, t.x, t.y, t.alive, t.team_id))
             .collect();
 
         let mut hit_events: Vec<(usize, usize)> = Vec::new();
@@ -370,8 +372,14 @@ fn run_game_loop(
                 bullet.x = nx;
                 bullet.y = ny;
 
-                if let Some(&(victim_id, ..)) = tank_pos.iter().find(|&&(id, x, y, alive)| {
-                    alive && id != bullet.owner && x == nx && y == ny
+                // 获取子弹拥有者的 team_id
+                let owner_team = tank_pos.iter()
+                    .find(|&&(id, ..)| id == bullet.owner)
+                    .map(|&(.., team_id)| team_id)
+                    .unwrap_or(usize::MAX);
+
+                if let Some(&(victim_id, ..)) = tank_pos.iter().find(|&&(id, x, y, alive, team_id)| {
+                    alive && id != bullet.owner && team_id != owner_team && x == nx && y == ny
                 }) {
                     hit_events.push((bullet.owner, victim_id));
                     bullet.active = false;
@@ -423,6 +431,7 @@ fn run_game_loop(
                 hp:           t.hp,
                 alive:        t.alive,
                 score:        t.score,
+                team_id:      t.team_id,
             }).collect(),
             bullets: state.bullets.iter().filter(|b| b.active).map(|b| battle::BulletSnapshot {
                 id:       b.id,

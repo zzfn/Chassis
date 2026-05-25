@@ -19,6 +19,7 @@ pub struct TankSnapshot {
     pub hp: i32,
     pub alive: bool,
     pub score: u32,
+    pub team_id: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +76,8 @@ pub struct BattleResult {
     pub skins: HashMap<String, TankSkin>,
     /// 每辆坦克的 JS 执行统计
     pub js_stats: Vec<JsExecStats>,
+    /// 胜利队伍 ID，None 表示平局/同归于尽（或单人模式）
+    pub winner_team: Option<usize>,
 }
 
 // ─── Arena Engine ────────────────────────────────────────────────────────
@@ -117,7 +120,9 @@ impl ArenaEngine {
             .enumerate()
             .map(|(id, (name, code))| {
                 let (sx, sy, sf) = physics::start_positions(id);
-                let state = TankState::new(id, name, sx, sy, sf);
+                // team_id = id % 2：id=0,2 → team 0；id=1,3 → team 1
+                let team_id = id % 2;
+                let state = TankState::new(id, name, sx, sy, sf, team_id);
                 let sandbox = QuickJsSandbox::new(name, code)?;
                 Ok((state, sandbox))
             })
@@ -128,7 +133,10 @@ impl ArenaEngine {
             bullets: Vec::new(),
             map,
             stars: Vec::new(),
-            rng: 12345678901234567,
+            rng: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64,
             next_bullet_id: 0,
         })
     }
@@ -156,6 +164,7 @@ impl ArenaEngine {
 
         let mut winner       = String::new();
         let mut winner_label = String::new();
+        let mut winner_team: Option<usize> = None;
         let mut final_tick   = physics::MAX_TURNS;
         let mut timed_out    = false;
 
@@ -259,8 +268,9 @@ impl ArenaEngine {
             self.bullets.extend(new_bullets);
 
             // ── 5. 推进子弹（每颗前进两格，与竞品对齐）────────────────────
-            let tank_pos: Vec<(usize, usize, usize, bool)> = self.agents.iter()
-                .map(|(t, _)| (t.id, t.x, t.y, t.alive))
+            // (id, x, y, alive, team_id)
+            let tank_pos: Vec<(usize, usize, usize, bool, usize)> = self.agents.iter()
+                .map(|(t, _)| (t.id, t.x, t.y, t.alive, t.team_id))
                 .collect();
 
             let mut hit_events: Vec<(usize, usize)> = Vec::new();
@@ -286,8 +296,14 @@ impl ArenaEngine {
                     bullet.x = nx;
                     bullet.y = ny;
 
-                    if let Some(&(victim_id, ..)) = tank_pos.iter().find(|&&(id, x, y, alive)| {
-                        alive && id != bullet.owner && x == nx && y == ny
+                    // 获取子弹拥有者的 team_id
+                    let owner_team = tank_pos.iter()
+                        .find(|&&(id, ..)| id == bullet.owner)
+                        .map(|&(.., team_id)| team_id)
+                        .unwrap_or(usize::MAX);
+
+                    if let Some(&(victim_id, ..)) = tank_pos.iter().find(|&&(id, x, y, alive, team_id)| {
+                        alive && id != bullet.owner && team_id != owner_team && x == nx && y == ny
                     }) {
                         hit_events.push((bullet.owner, victim_id));
                         bullet.active = false;
@@ -345,6 +361,7 @@ impl ArenaEngine {
                     body_angle: t.facing.to_angle(),
                     turret_angle: t.facing.to_angle(),
                     hp: t.hp, alive: t.alive, score: t.score,
+                    team_id: t.team_id,
                 }).collect(),
                 bullets: self.bullets.iter().filter(|b| b.active).map(|b| BulletSnapshot {
                     id: b.id, x: b.pixel_x(), y: b.pixel_y(), owner_id: b.owner,
@@ -361,22 +378,37 @@ impl ArenaEngine {
                 .filter(|t| t.alive)
                 .collect();
 
-            if alive.len() <= 1 {
+            // 存活坦克属于同一支队伍（或只剩 1 个或 0 个），则结束
+            let alive_teams: std::collections::HashSet<usize> =
+                alive.iter().map(|t| t.team_id).collect();
+
+            if alive_teams.len() <= 1 {
                 final_tick = turn + 1;
                 timed_out = false;
-                if let Some(t) = alive.first() {
-                    winner       = t.name.clone();
-                    winner_label = format!("{} 🏆", t.name);
-                } else {
+                if alive.is_empty() {
                     // 同归于尽：取得分/HP 最高者
                     if let Some(t) = self.agents.iter().map(|(t, _)| t)
                         .max_by_key(|t| (t.score, t.hp))
                     {
                         winner       = t.name.clone();
                         winner_label = format!("{} (同归于尽·最高分)", t.name);
+                        winner_team  = None;
                     } else {
                         winner       = "无".into();
                         winner_label = "无".into();
+                        winner_team  = None;
+                    }
+                } else {
+                    // 取存活队伍中得分/HP 最高者作为代表
+                    let winning_team = alive_teams.into_iter().next().unwrap();
+                    winner_team = Some(winning_team);
+                    if let Some(t) = alive.iter().max_by_key(|t| (t.score, t.hp)) {
+                        winner       = t.name.clone();
+                        winner_label = if alive.len() == 1 {
+                            format!("{} 🏆", t.name)
+                        } else {
+                            format!("队伍 {} 🏆（代表：{}）", winning_team, t.name)
+                        };
                     }
                 };
                 battle_log.push(format!("[Turn {:04}] 比赛结束！胜者: {}", turn, winner_label));
@@ -387,15 +419,25 @@ impl ArenaEngine {
         if winner.is_empty() {
             // 超时：循环跑完未分出胜负
             timed_out = true;
-            if let Some(t) = self.agents.iter().map(|(t, _)| t)
+            let alive_at_timeout: Vec<&TankState> = self.agents.iter()
+                .map(|(t, _)| t)
                 .filter(|t| t.alive)
+                .collect();
+            // 判定胜利队伍（存活坦克中得分/HP 最高者）
+            if let Some(t) = alive_at_timeout.iter().max_by_key(|t| (t.score, t.hp)) {
+                winner       = t.name.clone();
+                winner_label = format!("{} (时间到·最高分)", t.name);
+                winner_team  = Some(t.team_id);
+            } else if let Some(t) = self.agents.iter().map(|(t, _)| t)
                 .max_by_key(|t| (t.score, t.hp))
             {
                 winner       = t.name.clone();
                 winner_label = format!("{} (时间到·最高分)", t.name);
+                winner_team  = Some(t.team_id);
             } else {
                 winner       = "无".into();
                 winner_label = "无".into();
+                winner_team  = None;
             }
             battle_log.push(format!(
                 "达到最大回合 ({})，判定胜者: {}", physics::MAX_TURNS, winner_label
@@ -419,6 +461,7 @@ impl ArenaEngine {
             battle_log,
             skins: HashMap::new(),
             js_stats,
+            winner_team,
         }
     }
 }

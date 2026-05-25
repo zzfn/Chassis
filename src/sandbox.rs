@@ -55,6 +55,7 @@ var me = {
     bullet: null,
 };
 var enemy = null;
+var ally  = null;
 var game = { map: [], stars: [], star: null, frames: 0 };
 "#;
 
@@ -190,6 +191,22 @@ impl QuickJsSandbox {
                 globals.set("enemy", enemy_obj).map_err(|e| e.to_string())?;
             } else {
                 globals.set("enemy", Value::new_null(ctx.clone())).map_err(|e| e.to_string())?;
+            }
+
+            // ── 更新 ally（最近队友 or null）────────────────────────────
+            if let Some(a) = sensors.allies.first() {
+                let ally_obj = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+                let a_tank = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+                let a_pos = Array::new(ctx.clone()).map_err(|e| e.to_string())?;
+                a_pos.set(0, a.x as i32).map_err(|e| e.to_string())?;
+                a_pos.set(1, a.y as i32).map_err(|e| e.to_string())?;
+                a_tank.set("position", a_pos).map_err(|e| e.to_string())?;
+                a_tank.set("direction", a.facing.as_str()).map_err(|e| e.to_string())?;
+                a_tank.set("hp", a.hp).map_err(|e| e.to_string())?;
+                ally_obj.set("tank", a_tank).map_err(|e| e.to_string())?;
+                globals.set("ally", ally_obj).map_err(|e| e.to_string())?;
+            } else {
+                globals.set("ally", Value::new_null(ctx.clone())).map_err(|e| e.to_string())?;
             }
 
             // ── 更新 game ────────────────────────────────────────────────
