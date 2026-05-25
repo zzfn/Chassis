@@ -23,14 +23,6 @@ interface PlayerEntry {
   elo: number
 }
 
-function getEloTier(elo: number) {
-  if (elo >= 1800) return { label: "钻石", color: "#818cf8" }
-  if (elo >= 1500) return { label: "铂金", color: "#67e8f9" }
-  if (elo >= 1300) return { label: "黄金", color: "#fbbf24" }
-  if (elo >= 1100) return { label: "白银", color: "#a1a1aa" }
-  return { label: "青铜", color: "#c2874f" }
-}
-
 function TankAvatar({ name }: { name: string }) {
   const initials = name.slice(0, 2).toUpperCase()
   const hue = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
@@ -177,7 +169,7 @@ export default function DashboardPage() {
           {sorted.map((p, idx) => {
             const winRate = p.pvp_battles > 0 ? Math.round((p.pvp_wins / p.pvp_battles) * 100) : 0
             const elo = Math.round(p.elo ?? 1000)
-            const tier = getEloTier(p.elo ?? 1000)
+            const tier = getEloTier(p.elo ?? 1000, p.pvp_battles)
             const isMe = p.owner === myUsername
             const rankColor = idx === 0 ? "text-yellow-400" : idx === 1 ? "text-zinc-300" : idx === 2 ? "text-amber-600" : "text-zinc-600"
 
