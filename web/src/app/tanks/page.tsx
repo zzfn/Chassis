@@ -9,6 +9,8 @@ import { getEloTier } from "@/lib/elo"
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 
+const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
+
 const CARD_ACCENTS  = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35", "#7B2FFF"]
 const CARD_SHADOWS: [string, string][] = [
   ["#FFE600", "#7B2FFF"],
@@ -231,9 +233,69 @@ function TanksContent() {
   function closeNew() { setShowNew(false); setCreateError(null) }
 
   function randomName() {
-    const p = ["Iron","Steel","Shadow","Storm","Blaze","Void","Nova","Apex","Titan","Ghost","Frost","Ember"]
-    const s = ["Strike","Runner","Guard","Hunter","Blade","Wolf","Hawk","Rex","Zero","Prime","Core","Viper"]
-    setNewName(`${p[Math.floor(Math.random() * p.length)]}${s[Math.floor(Math.random() * s.length)]}`)
+    const prefix = [
+      "Iron","Steel","Shadow","Storm","Blaze","Void","Nova","Apex",
+      "Titan","Ghost","Frost","Ember","Cyber","Hyper","Onyx","Venom",
+      "Neon","Obsidian","Crimson","Zenith","Phantom","Quantum","Rogue","Inferno",
+    ]
+    const suffix = [
+      "Strike","Runner","Guard","Hunter","Blade","Wolf","Hawk","Rex",
+      "Zero","Prime","Core","Viper","Fang","Fury","Jet","Claw",
+      "Shard","Pulse","Wraith","Talon","Spike","Bolt","Rift","Surge",
+    ]
+    const p = pick(prefix)
+    const s = pick(suffix)
+    setNewName(`${p}${s}`)
+  }
+
+  function randomSkin() {
+    // 笛卡尔积：体型 × 涂装 × 表面细节 × 附加特征
+    // 6 × 10 × 10 × 8 = 4800 种组合
+    const bodies = [
+      "重型装甲车体，宽履带",
+      "低矮扁平的隐身车体",
+      "高机动轻甲车体，细履带",
+      "超重型突击车体，双层装甲板",
+      "流线型战斗车体",
+      "紧凑方正的突击车体",
+    ]
+    const colors = [
+      "哑光深灰涂装",
+      "橙红渐变火焰涂装",
+      "北极白蓝迷彩",
+      "沙漠卡其黄涂装",
+      "迷彩绿褐三色",
+      "哑光纯黑涂装",
+      "黄铜金属光泽涂装",
+      "赛博霓虹紫黑涂装",
+      "枪铁灰磨砂涂装",
+      "军绿橄榄色涂装",
+    ]
+    const details = [
+      "带红色危险警示条纹",
+      "覆满紫色电路板纹路",
+      "布满铆钉与焊接痕",
+      "有霓虹蓝发光条纹",
+      "印白色骷髅徽标",
+      "覆满做旧锈迹肌理",
+      "带黄黑相间警戒斑纹",
+      "刻有几何图形蚀刻纹",
+      "印有骨骼X光图案",
+      "带渐变能量裂纹光效",
+    ]
+    const extras = [
+      "炮管带环形散热槽",
+      "侧翼有推进喷口",
+      "履带覆防护链甲",
+      "顶部有折叠式天线",
+      "车尾装甲板带尖刺",
+      "炮塔侧面有附加护盾",
+      "炮管超长且末端微弯",
+      "车体四角有外挂装甲块",
+    ]
+    setSkinDesc(
+      `${pick(bodies)}，${pick(colors)}${pick(details)}，${pick(extras)}`
+    )
   }
 
   async function handleCreate() {
@@ -586,9 +648,19 @@ function TanksContent() {
 
               {/* Skin description */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-black uppercase tracking-widest text-[#00F5D4]">
-                  坦克样式 <span className="font-medium normal-case tracking-normal text-white/30">（可选）</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-widest text-[#00F5D4]">
+                    坦克样式 <span className="font-medium normal-case tracking-normal text-white/30">（可选）</span>
+                  </label>
+                  <button
+                    onClick={randomSkin}
+                    disabled={creating}
+                    title="随机生成样式"
+                    className="rounded-full border-4 border-dashed border-[#00F5D4] px-3 py-1 text-xs font-black uppercase tracking-widest text-[#00F5D4] transition-all duration-150 hover:bg-[#00F5D4]/10 hover:scale-105 disabled:opacity-40"
+                  >
+                    <Shuffle className="size-3.5" />
+                  </button>
+                </div>
                 <p className="text-xs text-white/35">
                   用一句话描述外观，AI 将生成专属 SVG 皮肤。留空可跳过。
                 </p>

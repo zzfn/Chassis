@@ -219,7 +219,6 @@ pub struct EnemySensor {
 
 #[derive(Clone)]
 pub struct BulletSensor {
-    pub id: u32,
     pub x: usize,
     pub y: usize,
     pub facing: Facing,
@@ -302,7 +301,7 @@ pub fn compute_sensors(
 
     let bullet_sensors: Vec<BulletSensor> = bullets.iter()
         .filter(|b| b.active)
-        .map(|b| BulletSensor { id: b.id, x: b.x, y: b.y, facing: b.facing, owner_id: b.owner })
+        .map(|b| BulletSensor { x: b.x, y: b.y, facing: b.facing, owner_id: b.owner })
         .collect();
 
     SensorData {
