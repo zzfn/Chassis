@@ -9,13 +9,9 @@ use uuid::Uuid;
 
 use crate::{battle::ArenaEngine, db};
 use crate::server::{
-    AppState, BOTS, json_err, extract_user_id, resolve_auth, AuthCtx,
-    run_test_battles, period_since, validate_svg, TANK_SVG_SYSTEM_PROMPT,
+    AppState, json_err, extract_user_id, resolve_auth, AuthCtx,
+    period_since, validate_svg, TANK_SVG_SYSTEM_PROMPT,
 };
-
-async fn list_bots() -> impl IntoResponse {
-    axum::Json(BOTS)
-}
 
 async fn submit_agent(
     State(state): State<AppState>,
@@ -43,11 +39,6 @@ async fn submit_agent(
     };
     let submitted_by = body.get("submitted_by").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    let results = match run_test_battles(&name, &code).await {
-        Ok(r)     => r,
-        Err(resp) => return resp,
-    };
-
     let is_first_time = matches!(
         db::get_latest_agent_by_name(pool, user_id, &name).await,
         Ok(None)
@@ -71,7 +62,7 @@ async fn submit_agent(
     axum::Json(serde_json::json!({
         "ok": true,
         "agent_id": agent_id,
-        "results": results,
+        "results": [],
         "api_key": api_key,
     })).into_response()
 }
@@ -410,7 +401,6 @@ async fn get_leaderboard(State(state): State<AppState>) -> impl IntoResponse {
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/bots",                    get(list_bots))
         .route("/api/agent",                   get(get_my_agent).post(submit_agent))
         .route("/api/my-tanks",                get(list_my_tanks))
         .route("/api/tanks/:id",               get(get_tank).delete(delete_tank))

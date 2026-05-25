@@ -11,12 +11,7 @@ use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-use crate::{auth, battle::ArenaEngine, db};
-
-pub(crate) const RUSHER_JS:  &str = include_str!("../../agents/rusher.js");
-pub(crate) const CIRCLER_JS: &str = include_str!("../../agents/circler.js");
-pub(crate) const SNIPER_JS:  &str = include_str!("../../agents/sniper.js");
-pub(crate) const CAMPER_JS:  &str = include_str!("../../agents/camper.js");
+use crate::{auth, db};
 
 // ── 应用状态 ──────────────────────────────────────────────────────────────────
 
@@ -25,23 +20,6 @@ pub(crate) struct AppState {
     pub(crate) pool:       PgPool,
     pub(crate) jwt_secret: String,
 }
-
-// ── Bot 元数据 ────────────────────────────────────────────────────────────────
-
-#[derive(serde::Serialize)]
-pub(crate) struct BotInfo {
-    pub(crate) name:        &'static str,
-    pub(crate) label:       &'static str,
-    pub(crate) description: &'static str,
-    pub(crate) difficulty:  &'static str,
-}
-
-pub(crate) const BOTS: &[BotInfo] = &[
-    BotInfo { name: "rusher",  label: "冲锋者", description: "全速冲向敌人，激进近战，不顾防御",         difficulty: "中等" },
-    BotInfo { name: "circler", label: "侧翼手", description: "交替从左右夹击，利用射击冷却空档冲刺",     difficulty: "中等" },
-    BotInfo { name: "sniper",  label: "狙击手", description: "冲刺射击后立刻侧移撤退，打完就跑",         difficulty: "较难" },
-    BotInfo { name: "camper",  label: "守门员", description: "蜗居角落等待时机，炮塔精准瞄准后点射",     difficulty: "简单" },
-];
 
 // ── 共享辅助 ─────────────────────────────────────────────────────────────────
 
@@ -113,48 +91,6 @@ pub(crate) fn period_since(period: Option<&str>) -> DateTime<Utc> {
         // 用 Unix 纪元当作"全部历史"的下界足以覆盖所有真实数据。
         _             => DateTime::<Utc>::from_timestamp(0, 0).unwrap_or_else(Utc::now),
     }
-}
-
-// ── 测试对战 ─────────────────────────────────────────────────────────────────
-
-#[derive(serde::Serialize)]
-pub(crate) struct TestResult {
-    pub(crate) opponent: String,
-    pub(crate) winner:   String,
-    pub(crate) ticks:    u32,
-}
-
-pub(crate) async fn run_test_battles(
-    name: &str,
-    code: &str,
-) -> Result<Vec<TestResult>, axum::response::Response> {
-    let test_bots: &[(&str, &str)] = &[
-        ("rusher",  RUSHER_JS),
-        ("circler", CIRCLER_JS),
-        ("sniper",  SNIPER_JS),
-    ];
-    let mut results = Vec::new();
-    for &(bot_name, bot_code) in test_bots {
-        let (n, c, bn, bc) = (
-            name.to_string(), code.to_string(),
-            bot_name.to_string(), bot_code.to_string(),
-        );
-        let r = tokio::task::spawn_blocking(move || {
-            let owned = vec![(n.as_str(), c.as_str()), (bn.as_str(), bc.as_str())];
-            let engine = ArenaEngine::new(owned)?;
-            Ok::<_, String>(engine.run())
-        }).await;
-        match r {
-            Ok(Ok(battle)) => results.push(TestResult {
-                opponent: bot_name.to_string(),
-                winner:   battle.winner,
-                ticks:    battle.total_ticks,
-            }),
-            Ok(Err(e)) => return Err(json_err(400, &format!("代码错误：{}", e))),
-            Err(e)     => return Err(json_err(500, &e.to_string())),
-        }
-    }
-    Ok(results)
 }
 
 // ── SVG 安全校验 ──────────────────────────────────────────────────────────────

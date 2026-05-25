@@ -9,8 +9,7 @@ use uuid::Uuid;
 
 use crate::{battle::{ArenaEngine, BattleResult}, db};
 use crate::server::{
-    AppState, BOTS, json_err, resolve_api_key, run_test_battles, period_since,
-    RUSHER_JS, CIRCLER_JS, SNIPER_JS, CAMPER_JS,
+    AppState, json_err, resolve_api_key, period_since,
 };
 
 fn elo_to_rank(elo: f64) -> (&'static str, u8, u8) {
@@ -90,7 +89,6 @@ async fn agent_tank_context(
             "rankPoints": rank_points,
         },
         "code": code,
-        "bots": BOTS,
         "maps": [{"id": "classic", "name": "经典"}],
         "simulate_cooldown_remaining_ms": 0,
         "nextSimulationAt": now_iso,
@@ -119,16 +117,11 @@ async fn agent_submit_code(
     let code         = req.code;
     let submitted_by = req.submitted_by;
 
-    let results = match run_test_battles(&name, &code).await {
-        Ok(r)     => r,
-        Err(resp) => return resp,
-    };
-
     match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref()).await {
         Ok(id) => axum::Json(serde_json::json!({
             "ok": true,
             "agent_id": id.to_string(),
-            "results": results,
+            "results": [],
         })).into_response(),
         Err(e) => json_err(500, &e.to_string()),
     }
@@ -389,12 +382,13 @@ async fn agent_challenge(
 
 #[derive(Deserialize)]
 struct AgentSimulateRequest {
-    bot:  Option<String>,
-    /// 竞品兼容字段，等价于 bot
+    code: Option<String>,
+    /// 兼容旧字段，忽略
+    #[allow(dead_code)]
+    bot: Option<String>,
+    #[allow(dead_code)]
     #[serde(rename = "opponentId")]
     opponent_id: Option<String>,
-    code: Option<String>,
-    /// 接受但暂不使用（地图选择尚未实现）
     #[serde(rename = "mapId")]
     _map_id: Option<String>,
 }
@@ -408,7 +402,6 @@ async fn agent_simulate(
     let Some(auth) = resolve_api_key(&headers, pool).await else {
         return json_err(401, "缺少或无效的 API Key");
     };
-    // code 优先用请求体；未提供则取库中最新版本
     let code = if let Some(c) = req.code {
         c
     } else {
@@ -418,17 +411,11 @@ async fn agent_simulate(
             Err(e)      => return json_err(500, &e.to_string()),
         }
     };
-    let bot_name = req.bot.or(req.opponent_id).as_deref().unwrap_or("rusher").to_string();
-    let opp_code = match bot_name.as_str() {
-        "rusher"  => RUSHER_JS,
-        "circler" => CIRCLER_JS,
-        "sniper"  => SNIPER_JS,
-        "camper"  => CAMPER_JS,
-        _         => RUSHER_JS,
-    }.to_string();
     let name = auth.agent_name.clone();
+    let mirror = format!("{}_mirror", name);
+    let code2 = code.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
-        let owned = vec![(name.as_str(), code.as_str()), (bot_name.as_str(), opp_code.as_str())];
+        let owned = vec![(name.as_str(), code.as_str()), (mirror.as_str(), code2.as_str())];
         let engine = ArenaEngine::new(owned)?;
         Ok(engine.run())
     }).await;

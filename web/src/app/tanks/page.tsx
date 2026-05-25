@@ -17,7 +17,7 @@ import {
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 
-const DEFAULT_CODE = `// 入门模板：对齐后射击，遇墙换轴
+const DEFAULT_CODE = `// 入门模板：朝敌冲锋，遇墙绕行，冷却好就开火
 function onIdle(me, enemy, game) {
   if (!enemy) { me.turn("right"); return; }
 
@@ -25,8 +25,7 @@ function onIdle(me, enemy, game) {
   var ex = enemy.tank.position[0], ey = enemy.tank.position[1];
   var dx = ex - mx, dy = ey - my;
   var dirs = ["north","east","south","west"];
-  var ddx  = [0, 1, 0,-1];
-  var ddy  = [-1, 0, 1, 0];
+  var ddx  = [0, 1, 0,-1], ddy = [-1, 0, 1, 0];
 
   function turnTo(want) {
     if (me.tank.direction === want) return false;
@@ -35,7 +34,6 @@ function onIdle(me, enemy, game) {
     return true;
   }
 
-  // 检查某方向是否可通行
   function free(dir) {
     var i = dirs.indexOf(dir);
     var nx = mx + ddx[i], ny = my + ddy[i];
@@ -43,42 +41,25 @@ function onIdle(me, enemy, game) {
     return !!(row && (row[nx] === "." || row[nx] === "o"));
   }
 
-  // 已在同列：对准敌人方向，能通行则射击并前进，否则侧移换列
-  if (dx === 0) {
-    var w = dy > 0 ? "south" : "north";
-    if (turnTo(w)) return;
-    if (free(w)) {
-      if (me.tank.shootCooldown === 0) me.fire();
-      if (Math.abs(dy) > 1) me.go();
-    } else {
-      me.turn("right"); // 路被墙堵，侧移换一列
-    }
-    return;
-  }
-
-  // 已在同行：对准敌人方向，能通行则射击并前进，否则换行
-  if (dy === 0) {
-    var w = dx > 0 ? "east" : "west";
-    if (turnTo(w)) return;
-    if (free(w)) {
-      if (me.tank.shootCooldown === 0) me.fire();
-      if (Math.abs(dx) > 1) me.go();
-    } else {
-      me.turn("right");
-    }
-    return;
-  }
-
-  // 未对齐：优先消除较短轴偏差（快速进入同行/同列），若被堵则走另一轴
-  var shortDir = Math.abs(dx) <= Math.abs(dy)
+  // 朝敌方向：优先离敌更远的轴，被堵改走另一轴
+  var want = Math.abs(dx) >= Math.abs(dy)
     ? (dx > 0 ? "east" : "west")
     : (dy > 0 ? "south" : "north");
-  var longDir = Math.abs(dx) <= Math.abs(dy)
-    ? (dy > 0 ? "south" : "north")
-    : (dx > 0 ? "east" : "west");
-  var chosen = free(shortDir) ? shortDir : (free(longDir) ? longDir : shortDir);
-  if (turnTo(chosen)) return;
-  if (free(chosen)) me.go(); else me.turn("right");
+  if (!free(want)) {
+    want = Math.abs(dx) >= Math.abs(dy)
+      ? (dy !== 0 ? (dy > 0 ? "south" : "north") : "south")
+      : (dx !== 0 ? (dx > 0 ? "east"  : "west")  : "east");
+  }
+
+  // 转向目标方向
+  if (turnTo(want)) return;
+
+  // 冷却好就开火
+  if (me.tank.shootCooldown === 0) me.fire();
+
+  // 前进（路通就走，否则转向解锁）
+  if (free(want)) me.go();
+  else me.turn("right");
 }`
 
 interface TankSkin {

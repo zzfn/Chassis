@@ -8,13 +8,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{battle::{ArenaEngine, BattleResult}, db};
-use crate::server::{AppState, json_err, extract_user_id, RUSHER_JS, CIRCLER_JS, SNIPER_JS, CAMPER_JS};
+use crate::server::{AppState, json_err, extract_user_id};
 
 #[derive(Deserialize)]
 struct BattleRequest {
-    name:     String,
-    code:     String,
-    opponent: String,
+    name:          String,
+    code:          String,
+    opponent:      String,
+    opponent_code: String,
 }
 
 #[derive(Serialize)]
@@ -38,29 +39,27 @@ async fn handle_battle(
         return json_err(400, "坦克名称无效").into_response();
     }
 
-    let user_id  = extract_user_id(&headers, &state.jwt_secret);
-    let name     = req.name.clone();
-    let code     = req.code.clone();
-    let opponent = req.opponent.clone();
+    if req.opponent_code.len() > 65_536 {
+        return json_err(400, "对手代码长度不能超过 64 KB").into_response();
+    }
+
+    let user_id       = extract_user_id(&headers, &state.jwt_secret);
+    let name          = req.name.clone();
+    let code          = req.code.clone();
+    let opponent      = req.opponent.clone();
+    let opponent_code = req.opponent_code.clone();
 
     let result = tokio::task::spawn_blocking({
-        let name     = name.clone();
-        let code     = code.clone();
-        let opponent = opponent.clone();
+        let name          = name.clone();
+        let code          = code.clone();
+        let opponent      = opponent.clone();
+        let opponent_code = opponent_code.clone();
         move || -> Result<BattleResult, String> {
-            let opp_code = match opponent.as_str() {
-                "rusher"  => RUSHER_JS,
-                "circler" => CIRCLER_JS,
-                "sniper"  => SNIPER_JS,
-                "camper"  => CAMPER_JS,
-                _         => RUSHER_JS,
-            };
             let owned = vec![
-                (name.clone(),     code.clone()),
-                (opponent.clone(), opp_code.to_string()),
+                (name.as_str(),     code.as_str()),
+                (opponent.as_str(), opponent_code.as_str()),
             ];
-            let refs: Vec<(&str, &str)> = owned.iter().map(|(n, c)| (n.as_str(), c.as_str())).collect();
-            let engine = ArenaEngine::new(refs)?;
+            let engine = ArenaEngine::new(owned)?;
             Ok(engine.run())
         }
     })
