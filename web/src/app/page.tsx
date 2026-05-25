@@ -187,7 +187,7 @@ export default function HomePage() {
             transition={{ duration: 0.6, ease: "easeOut" }}
             className="max-w-4xl text-6xl font-extrabold tracking-tight text-white md:text-7xl lg:text-8xl"
           >
-            Chas
+            Deep
             <motion.span
               className="text-blue-500 inline-block"
               animate={
@@ -203,7 +203,7 @@ export default function HomePage() {
               }
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             >
-              sis
+              Tank
             </motion.span>
           </motion.h1>
 
