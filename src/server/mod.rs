@@ -11,6 +11,8 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
@@ -25,6 +27,7 @@ pub(crate) struct AppState {
     pub(crate) resend_api_key: String,
     pub(crate) app_url:        String,
     pub(crate) from_email:     String,
+    pub(crate) battle_sem:     Arc<Semaphore>,
 }
 
 // ── 共享辅助 ─────────────────────────────────────────────────────────────────
@@ -298,7 +301,9 @@ pub async fn serve(port: u16) {
     let resend_api_key = std::env::var("RESEND_API_KEY").unwrap_or_default();
     let app_url        = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let from_email     = std::env::var("FROM_EMAIL").unwrap_or_else(|_| "noreply@deeptank.xyz".to_string());
-    let state = AppState { pool, jwt_secret, resend_api_key, app_url, from_email };
+    let concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+    let battle_sem  = Arc::new(Semaphore::new(concurrency));
+    let state = AppState { pool, jwt_secret, resend_api_key, app_url, from_email, battle_sem };
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)

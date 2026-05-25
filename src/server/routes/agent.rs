@@ -361,6 +361,13 @@ async fn agent_challenge(
     let c_skill = SkillType::from_str(&challenger.skill_type);
     let o_skill = SkillType::from_str(&opponent.skill_type);
 
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试"),
+    };
     let battle_result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
@@ -430,6 +437,13 @@ async fn agent_simulate(
     let name = auth.agent_name.clone();
     let mirror = format!("{}_mirror", name);
     let code2 = code.clone();
+    let _permit = match tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        state.battle_sem.acquire(),
+    ).await {
+        Ok(Ok(p)) => p,
+        _ => return json_err(503, "服务器繁忙，请稍后再试"),
+    };
     let result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
         let owned = vec![
             (name.as_str(), code.as_str(), SkillType::Shield),
