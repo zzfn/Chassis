@@ -36,8 +36,8 @@ ask_secret() {
 }
 
 gen_secret() {
-  cat /dev/urandom | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 64 2>/dev/null || \
-    openssl rand -base64 48 | tr -d '\n'
+  # dd 读取固定字节后退出 0，避免无限流 + pipefail 导致管道失败
+  dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64 | tr -d '\n/+='
 }
 
 # ── 前置检查 ─────────────────────────────────────────────────────────────────
@@ -108,6 +108,8 @@ echo ""
 # 配置向导（首次安装，升级跳过）
 # ══════════════════════════════════════════════════════════════════════════════
 ENV_FILE="$INSTALL_DIR/.env"
+# 防止 set -u 在升级路径（跳过向导）时因未赋值而报错
+DB_HOST="" DB_PORT="" DB_NAME="" DB_USER="" DB_PASS="" DB_URL=""
 
 if [ ! -f "$ENV_FILE" ]; then
   echo ""
@@ -125,7 +127,8 @@ if [ ! -f "$ENV_FILE" ]; then
     DB_PORT="5432"
     DB_NAME="deeptank"
     DB_USER="deeptank"
-    DB_PASS="$(gen_secret | head -c 24)"
+    _secret="$(gen_secret)"
+    DB_PASS="${_secret:0:24}"
     DB_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
     info "将自动安装 PostgreSQL 并创建数据库 ${DB_NAME}"
   else
