@@ -11,7 +11,7 @@ interface TankSnapshot {
   body_angle: number; hp: number; alive: boolean; score: number
   team_id?: number
 }
-interface BulletSnapshot { id: number; x: number; y: number; owner_id: number }
+interface BulletSnapshot { id: number; x: number; y: number; owner_id: number; vx: number; vy: number }
 interface StarSnapshot   { x: number; y: number }
 interface FrameData {
   tick: number
@@ -293,9 +293,10 @@ interface PixiViewProps {
   onTick: (idx: number) => void
   onEnd: () => void
   onCanvasReady?: (canvas: HTMLCanvasElement) => void
+  onFps?: (fps: number) => void
 }
 
-function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady }: PixiViewProps) {
+function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }: PixiViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // ── 坦克 sprite 映射 ──────────────────────────────────────
@@ -464,10 +465,17 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady }: PixiV
     }
 
     // ── Ticker：帧推进 + 插值，全部在 GPU 循环内 ──────────
+    let fpsFrameCount = 0
     app.ticker.add(() => {
       const now = performance.now()
       const dt  = now - lastMs.current   // 真实帧间距（ms）
       lastMs.current = now
+
+      // 每 30 帧上报一次 FPS，避免频繁触发 React re-render
+      if (onFps && ++fpsFrameCount >= 30) {
+        fpsFrameCount = 0
+        onFps(Math.round(app.ticker.FPS))
+      }
 
       // 1. seek
       if (seekPend.current !== null) {
@@ -509,7 +517,8 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady }: PixiV
                   const color = (ownerStyleMap.current.get(b.owner_id) ?? BULLET_STYLE_DEFS.default).color
                   const g = new PIXI.Graphics()
                   fxLayer.current.addChild(g)
-                  explosions.current.push({ x: b.x * S, y: b.y * S, g, t: 0, color })
+                  // 偏移一格到实际碰撞点（遥测记录的是移动前位置）
+                  explosions.current.push({ x: (b.x + b.vx * TILE) * S, y: (b.y + b.vy * TILE) * S, g, t: 0, color })
                 }
               })
             }
@@ -703,6 +712,7 @@ export default function ReplayPage() {
   const [playing,   setPlaying]   = useState(false)
   const [bgm,       setBgm]       = useState(true)
   const [recording, setRecording] = useState(false)
+  const [fps,       setFps]       = useState<number | null>(null)
   const [loadedAt]                = useState(() => new Date())
 
   const seekFn        = useRef<((idx: number) => void) | null>(null)
@@ -1063,6 +1073,11 @@ export default function ReplayPage() {
               <span className="w-20 shrink-0 text-right font-mono text-xs font-black tabular-nums text-[#FF3AF2]">
                 {frameIdx + 1} / {total}
               </span>
+              {fps !== null && (
+                <span className="shrink-0 font-mono text-[10px] font-black tabular-nums text-white/40">
+                  {fps} fps
+                </span>
+              )}
               <button
                 onClick={() => setBgm(b => !b)}
                 title={bgm ? "静音" : "开启音乐"}
@@ -1092,6 +1107,7 @@ export default function ReplayPage() {
                 data={data} playing={playing}
                 seekFn={seekFn}
                 onCanvasReady={(c) => { pixiCanvas.current = c }}
+                onFps={setFps}
                 onTick={setFrameIdx}
                 onEnd={() => {
                   setPlaying(false)
