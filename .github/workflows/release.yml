@@ -45,44 +45,10 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
-  # ── Next.js 前端 ──────────────────────────────────────────────────────────
-  build-frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: 安装 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: 安装依赖
-        run: npm ci
-        working-directory: web
-
-      - name: 构建
-        run: npm run build
-        working-directory: web
-
-      - name: 打包 standalone
-        run: |
-          # standalone 目录已包含完整 Node 运行时依赖，补充静态资源
-          cp -r web/.next/static web/.next/standalone/.next/static
-          cp -r web/public       web/.next/standalone/public 2>/dev/null || true
-          tar -czf deeptank-web.tar.gz -C web/.next/standalone .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deeptank-web
-          path: deeptank-web.tar.gz
-
   # ── 创建 GitHub Release（仅 tag 触发）────────────────────────────────────
   release:
     name: Release
-    needs: [build-rust, build-frontend]
+    needs: [build-rust]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -99,4 +65,3 @@ jobs:
           files: |
             deeptank-linux-amd64
             deeptank-linux-arm64
-            deeptank-web.tar.gz
