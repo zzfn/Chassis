@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { motion } from "framer-motion"
-import { Loader2, Trophy, Swords } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Loader2, Trophy, Swords, ChevronDown, Check } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
 import { getEloTier } from "@/lib/elo"
 
@@ -43,6 +43,87 @@ const RANK_MEDALS = ["🥇", "🥈", "🥉"]
 
 type SortKey = "elo" | "winRate" | "wins" | "battles"
 type Period  = "today" | "week" | "all"
+
+function SortDropdown({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const current = SORT_OPTIONS.find(o => o.value === value)!
+  const OPTION_COLORS = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35"]
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 rounded-full border-4 border-dashed border-[#7B2FFF] bg-[#2D1B4E]/60 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-[#7B2FFF] transition-all duration-150 hover:bg-[#7B2FFF]/15 hover:scale-105 active:scale-95"
+      >
+        {current.label}
+        <ChevronDown
+          className="size-3 transition-transform duration-200"
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0,  scale: 1 }}
+            exit={{ opacity: 0,  y: -6,  scale: 0.96 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute right-0 top-11 z-50 min-w-[160px] overflow-hidden rounded-2xl py-1"
+            style={{
+              background:  "#1A0D2E",
+              border:      "4px solid #7B2FFF",
+              boxShadow:   "6px 6px 0 #FF3AF2, 0 0 20px rgba(123,47,255,0.35)",
+            }}
+          >
+            {SORT_OPTIONS.map((o, i) => {
+              const color  = OPTION_COLORS[i]
+              const active = o.value === value
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left text-xs font-black uppercase tracking-wide transition-all duration-100"
+                  style={{
+                    color:      active ? color : "rgba(255,255,255,0.65)",
+                    background: active ? `${color}18` : "transparent",
+                  }}
+                  onMouseEnter={e => {
+                    if (!active) {
+                      const el = e.currentTarget as HTMLElement
+                      el.style.background = `${color}12`
+                      el.style.color      = color
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!active) {
+                      const el = e.currentTarget as HTMLElement
+                      el.style.background = "transparent"
+                      el.style.color      = "rgba(255,255,255,0.65)"
+                    }
+                  }}
+                >
+                  {o.label}
+                  {active && <Check className="size-3" style={{ color }} />}
+                </button>
+              )
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 function TankAvatar({ name }: { name: string }) {
   const initials = name.slice(0, 2).toUpperCase()
@@ -160,15 +241,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value as SortKey)}
-              className="appearance-none rounded-full border-4 border-dashed border-[#7B2FFF] bg-[#2D1B4E]/60 px-4 py-1.5 text-xs font-black uppercase tracking-wide text-[#7B2FFF] focus:outline-none cursor-pointer"
-            >
-              {SORT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <SortDropdown value={sortBy} onChange={setSortBy} />
           </div>
         </div>
 
