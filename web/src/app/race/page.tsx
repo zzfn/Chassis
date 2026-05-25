@@ -14,6 +14,7 @@ function RaceContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
 
+  const [mode,           setMode]           = useState<"1v1" | "2v2">("1v1")
   const [myTanks,        setMyTanks]        = useState<MyTank[]>([])
   const [selectedTankId, setSelectedTankId] = useState<string | null>(null)
   const [battling,       setBattling]       = useState(false)
@@ -42,7 +43,8 @@ function RaceContent() {
     setBattling(true)
     setError(null)
     try {
-      const res  = await fetch(`${apiBase}/api/matchmake`, {
+      const endpoint = mode === "2v2" ? `${apiBase}/api/matchmake/2v2` : `${apiBase}/api/matchmake`
+      const res  = await fetch(endpoint, {
         method:  "POST",
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -109,6 +111,34 @@ function RaceContent() {
           >
             对战匹配
           </h1>
+        </motion.div>
+
+        {/* ── 模式切换 ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.08 }}
+          className="flex gap-3 w-full"
+        >
+          {(["1v1", "2v2"] as const).map((m) => {
+            const active = mode === m
+            return (
+              <motion.button
+                key={m}
+                onClick={() => { setMode(m); setError(null) }}
+                whileTap={{ scale: 0.95 }}
+                className="-skew-x-6 flex-1 py-2.5 font-mono text-xs font-black uppercase tracking-widest transition-all duration-200 hover:skew-x-0"
+                style={{
+                  border:     `2px ${active ? "solid" : "dashed"} ${active ? "#00F5D4" : "rgba(255,255,255,0.2)"}`,
+                  background: active ? "#00F5D4" : "transparent",
+                  color:      active ? "#000" : "rgba(255,255,255,0.3)",
+                  boxShadow:  active ? "0 0 14px rgba(0,245,212,0.35)" : "none",
+                }}
+              >
+                <span className="inline-block skew-x-6">{m}</span>
+              </motion.button>
+            )
+          })}
         </motion.div>
 
         {/* ── 坦克选择 ── */}
@@ -240,7 +270,7 @@ function RaceContent() {
           </motion.button>
 
           <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-white/20">
-            系统将根据 Elo 自动匹配对手
+            {mode === "2v2" ? "系统将自动匹配队友与对手" : "系统将根据 Elo 自动匹配对手"}
           </p>
         </motion.div>
 

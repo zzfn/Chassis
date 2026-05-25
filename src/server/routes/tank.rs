@@ -275,6 +275,93 @@ async fn handle_matchmake(
     }
 }
 
+async fn handle_matchmake_2v2(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let Some(challenger_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+
+    // 取玩家最新坦克
+    let challenger = match db::get_latest_agent_by_user_id(pool, challenger_id).await {
+        Ok(Some(a)) => a,
+        Ok(None)    => return json_err(404, "请先提交坦克"),
+        Err(e)      => return json_err(500, &e.to_string()),
+    };
+
+    // 随机抽取 3 个其他玩家坦克
+    let others = match db::get_random_agents(pool, challenger_id, 3).await {
+        Ok(v) if v.len() >= 3 => v,
+        Ok(_)                  => return json_err(400, "对手不足，暂无法匹配 2v2"),
+        Err(e)                 => return json_err(500, &e.to_string()),
+    };
+
+    // 队伍分配：id=0(team0) 玩家 + id=2(team0) 随机A  vs  id=1(team1) 随机B + id=3(team1) 随机C
+    let c_name  = challenger.name.clone();
+    let c_code  = challenger.code.clone();
+    let a_name  = others[0].name.clone();
+    let a_code  = others[0].code.clone();
+    let b_name  = others[1].name.clone();
+    let b_code  = others[1].code.clone();
+    let cc_name = others[2].name.clone();
+    let cc_code = others[2].code.clone();
+
+    let ally_user_id   = others[0].user_id;
+    let enemy1_user_id = others[1].user_id;
+    let enemy2_user_id = others[2].user_id;
+
+    let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
+        // 顺序：[0]=挑战者(team0), [1]=随机B(team1), [2]=随机A(team0), [3]=随机C(team1)
+        // ArenaEngine 按 id%2 分队：偶数=team0, 奇数=team1
+        let owned = vec![
+            (c_name.as_str(),  c_code.as_str()),   // id=0, team0
+            (b_name.as_str(),  b_code.as_str()),   // id=1, team1
+            (a_name.as_str(),  a_code.as_str()),   // id=2, team0
+            (cc_name.as_str(), cc_code.as_str()),  // id=3, team1
+        ];
+        let engine = ArenaEngine::new(owned)?;
+        Ok(engine.run())
+    }).await;
+
+    match battle_result {
+        Ok(Ok(mut result)) => {
+            let c_name  = challenger.name.clone();
+            let a_name  = others[0].name.clone();
+            let b_name  = others[1].name.clone();
+            let cc_name = others[2].name.clone();
+
+            // 载入皮肤
+            if let Ok(Some(skin)) = db::get_tank_skin(pool, challenger_id, &c_name).await {
+                result.skins.insert(c_name.clone(), skin);
+            }
+            if let Ok(Some(skin)) = db::get_tank_skin(pool, ally_user_id, &a_name).await {
+                result.skins.insert(a_name.clone(), skin);
+            }
+            if let Ok(Some(skin)) = db::get_tank_skin(pool, enemy1_user_id, &b_name).await {
+                result.skins.insert(b_name.clone(), skin);
+            }
+            if let Ok(Some(skin)) = db::get_tank_skin(pool, enemy2_user_id, &cc_name).await {
+                result.skins.insert(cc_name.clone(), skin);
+            }
+
+            // 以挑战者 vs 第一个敌方为主场记录（兼容现有 save_pvp_battle 签名）
+            match db::save_pvp_battle(pool, challenger_id, enemy1_user_id, &c_name, &b_name, &result).await {
+                Ok(id) => axum::Json(serde_json::json!({
+                    "id": id.to_string(),
+                    "winner": result.winner,
+                    "winner_team": if result.winner.is_empty() { serde_json::Value::Null }
+                                   else { serde_json::Value::String(result.winner.clone()) },
+                })).into_response(),
+                Err(e) => json_err(500, &e.to_string()),
+            }
+        }
+        Ok(Err(e)) => json_err(500, &e),
+        Err(e)     => json_err(500, &e.to_string()),
+    }
+}
+
 #[derive(Deserialize)]
 struct GenerateSkinRequest { description: String }
 
@@ -410,5 +497,6 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/players",                 get(list_players))
         .route("/api/challenge/:agent_id",     post(handle_challenge))
         .route("/api/matchmake",               post(handle_matchmake))
+        .route("/api/matchmake/2v2",           post(handle_matchmake_2v2))
         .route("/api/leaderboard",             get(get_leaderboard))
 }

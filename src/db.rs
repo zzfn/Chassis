@@ -795,6 +795,24 @@ pub async fn get_agent_by_id(pool: &PgPool, agent_id: Uuid) -> Result<Option<Age
     Ok(row.as_ref().map(row_to_agent))
 }
 
+/// 随机抽取多个其他用户的最新坦克，排除指定用户自己的坦克
+pub async fn get_random_agents(pool: &PgPool, exclude_user_id: Uuid, count: i64) -> Result<Vec<AgentRow>, sqlx::Error> {
+    let rows = sqlx::query(r#"
+        SELECT id, user_id, name, code FROM (
+            SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code
+            FROM agents a
+            WHERE a.user_id != $1 AND a.code IS NOT NULL
+            ORDER BY a.user_id, a.created_at DESC
+        ) latest
+        ORDER BY RANDOM()
+        LIMIT $2
+    "#)
+    .bind(exclude_user_id)
+    .bind(count)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(row_to_agent).collect())
+}
+
 // 按 ELO 距离最近匹配对手（每个用户取最新提交的 agent）
 pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(r#"
