@@ -212,6 +212,39 @@ else
 
   ENGINE_PORT="$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d ' ')"
   ENGINE_PORT="${ENGINE_PORT:-3001}"
+
+  # 检查邮件配置（可选）
+  _has_resend="$(grep -c '^RESEND_API_KEY=' "$ENV_FILE" 2>/dev/null || true)"
+  if [ "${_has_resend}" -gt 0 ]; then
+    # 已有 Key，检查配套字段是否完整
+    if ! grep -q '^APP_URL=' "$ENV_FILE" 2>/dev/null; then
+      warn "APP_URL 缺失（RESEND_API_KEY 已设置）"
+      _app_url="$(ask "APP_URL（前端访问地址）" "https://deeptank.xyz")"
+      echo "APP_URL=${_app_url}" >> "$ENV_FILE"
+      success "APP_URL 已补写"
+    fi
+    if ! grep -q '^FROM_EMAIL=' "$ENV_FILE" 2>/dev/null; then
+      warn "FROM_EMAIL 缺失（RESEND_API_KEY 已设置）"
+      _from="$(ask "FROM_EMAIL（发件人地址）" "noreply@deeptank.xyz")"
+      echo "FROM_EMAIL=${_from}" >> "$ENV_FILE"
+      success "FROM_EMAIL 已补写"
+    fi
+  else
+    # 未配置，询问是否现在设置
+    echo -e "${CYAN}▶ Resend 邮件服务（可选）${NC}"
+    _setup_mail="$(ask "是否配置邮件服务？[y/n]" "n")"
+    if [ "$_setup_mail" = "y" ] || [ "$_setup_mail" = "Y" ]; then
+      _resend_key="$(ask_secret "RESEND_API_KEY")"
+      if [ -n "$_resend_key" ]; then
+        _app_url="$(ask "APP_URL（前端访问地址）" "https://deeptank.xyz")"
+        _from="$(ask "FROM_EMAIL（发件人地址）" "noreply@deeptank.xyz")"
+        echo "RESEND_API_KEY=${_resend_key}" >> "$ENV_FILE"
+        echo "APP_URL=${_app_url}"           >> "$ENV_FILE"
+        echo "FROM_EMAIL=${_from}"           >> "$ENV_FILE"
+        success "邮件配置已写入"
+      fi
+    fi
+  fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
