@@ -1,0 +1,102 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Rust 二进制（双架构并行）─────────────────────────────────────────────
+  build-rust:
+    name: Rust (${{ matrix.artifact }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: deeptank-linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: deeptank-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 缓存 Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: 编译 Release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 重命名产物
+        run: cp target/${{ matrix.target }}/release/deeptank ${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  # ── Next.js 前端 ──────────────────────────────────────────────────────────
+  build-frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+        working-directory: web
+
+      - name: 构建
+        run: npm run build
+        working-directory: web
+
+      - name: 打包 standalone
+        run: |
+          # standalone 目录已包含完整 Node 运行时依赖，补充静态资源
+          cp -r web/.next/static web/.next/standalone/.next/static
+          cp -r web/public       web/.next/standalone/public 2>/dev/null || true
+          tar -czf deeptank-web.tar.gz -C web/.next/standalone .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deeptank-web
+          path: deeptank-web.tar.gz
+
+  # ── 创建 GitHub Release（仅 tag 触发）────────────────────────────────────
+  release:
+    name: Release
+    needs: [build-rust, build-frontend]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            deeptank-linux-amd64
+            deeptank-linux-arm64
+            deeptank-web.tar.gz
