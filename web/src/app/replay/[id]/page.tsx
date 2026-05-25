@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX } from "lucide-react"
+import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX, Loader2, Trophy, Swords, Zap } from "lucide-react"
 import * as PIXI from "pixi.js"
 
 // ── 数据类型 ──────────────────────────────────────────────────
@@ -521,27 +521,50 @@ export default function ReplayPage() {
   const result = data ? (data.timed_out ? "超时" : "击败") : "—"
 
   if (err) return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-950">
-      <p className="text-red-400">加载失败：{err}</p>
-    </main>
-  )
-  if (!data) return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-950">
-      <div className="flex flex-col items-center gap-3">
-        <div className="size-8 animate-spin rounded-full border-2 border-zinc-700 border-t-blue-500" />
-        <p className="text-sm text-zinc-500">载入中…</p>
+    <main className="relative flex flex-1 items-center justify-center overflow-hidden bg-[#0D0D1A] px-4">
+      <div className="pointer-events-none absolute inset-0 pattern-dots opacity-[0.08]" />
+      <div
+        className="relative rounded-3xl px-10 py-8 text-center"
+        style={{ border: "4px dashed #FF6B35", background: "rgba(255,107,53,0.08)" }}
+      >
+        <p className="text-3xl font-black uppercase tracking-tight text-[#FF6B35]" style={{ textShadow: "2px 2px 0 #FF3AF2" }}>
+          加载失败
+        </p>
+        <p className="mt-2 text-sm font-bold text-[#FF6B35]/60">{err}</p>
       </div>
     </main>
   )
 
-  function TankIcon({ name, color, border: borderColor }: { name: string; color: string; border: string }) {
-    const skin = data!.skins?.[name]
+  if (!data) return (
+    <main className="relative flex flex-1 items-center justify-center overflow-hidden bg-[#0D0D1A]">
+      <div className="pointer-events-none absolute inset-0 pattern-dots opacity-[0.08]" />
+      <div className="pointer-events-none absolute inset-0 pattern-stripes" />
+      <div className="relative flex flex-col items-center gap-4">
+        <Loader2 className="size-10 animate-spin text-[#FF3AF2]" />
+        <p className="text-sm font-black uppercase tracking-[0.3em] text-[#FF3AF2]">载入回放…</p>
+      </div>
+    </main>
+  )
+
+  const TANK_COLORS = ["#00F5D4", "#FF3AF2"] as const
+
+  function TankIcon({ name, idx: i, size = 56 }: { name: string; idx: number; size?: number }) {
+    const skin  = data!.skins?.[name]
+    const color = TANK_COLORS[i % 2]
     return (
-      <div className={`flex size-12 shrink-0 items-center justify-center rounded-xl border-2 overflow-hidden`}
-        style={{ borderColor, background: `${color}22` }}>
+      <div
+        className="shrink-0 overflow-hidden rounded-full flex items-center justify-center border-4"
+        style={{
+          width: size, height: size,
+          borderColor: color,
+          background: `${color}18`,
+          boxShadow: `0 0 18px ${color}55`,
+        }}
+      >
         {skin?.svg
-          ? <svg viewBox="-20 -14 40 28" width="44" height="31" dangerouslySetInnerHTML={{ __html: skin.svg }} />
-          : <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          ? <svg viewBox="-20 -14 40 28" width={size * 0.78} height={size * 0.55}
+              dangerouslySetInnerHTML={{ __html: skin.svg }} />
+          : <svg width={size * 0.48} height={size * 0.48} viewBox="0 0 20 20" fill="none">
               <rect x="2" y="6" width="16" height="8" rx="2" fill={color} />
               <rect x="8" y="2" width="5" height="7" rx="1" fill={color} opacity=".7" />
               <circle cx="5"  cy="15" r="2" fill={color} opacity=".6" />
@@ -552,115 +575,223 @@ export default function ReplayPage() {
     )
   }
 
-  return (
-    <main className="flex flex-1 flex-col bg-zinc-950">
-      <div className="mx-auto w-full max-w-7xl flex-1 flex flex-col gap-4 px-4 py-5">
+  const winnerName = data.winner_label ?? data.winner ?? "—"
 
-        {/* 顶栏 */}
+  return (
+    <main className="relative flex flex-1 flex-col overflow-hidden bg-[#0D0D1A] px-4 py-6">
+
+      {/* Background */}
+      <div className="pointer-events-none absolute inset-0 pattern-dots opacity-[0.07]" />
+      <div className="pointer-events-none absolute inset-0 pattern-stripes" />
+      <div className="animate-max-float pointer-events-none absolute top-[4%] right-[3%] select-none text-4xl" aria-hidden="true">🏆</div>
+      <div className="animate-max-bounce pointer-events-none absolute bottom-[8%] left-[2%] select-none text-3xl" aria-hidden="true">💥</div>
+
+      <div className="relative mx-auto w-full max-w-[920px] flex flex-col gap-5">
+
+        {/* ── Top bar ── */}
         <div className="flex items-center justify-between">
-          <button onClick={() => router.back()}
-            className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 rounded-full border-4 border-dashed border-[#7B2FFF] px-4 py-1.5 text-sm font-black uppercase tracking-widest text-[#7B2FFF] transition-all duration-150 hover:bg-[#7B2FFF]/10 hover:scale-105"
+          >
             <ArrowLeft className="size-4" /> 返回
           </button>
-          <span className="flex items-center gap-1.5 text-xs font-bold tracking-widest text-red-500">
-            <span className="size-2 rounded-sm bg-red-500" /> 回放
-          </span>
+          <div
+            className="flex items-center gap-2 rounded-full border-4 px-4 py-1.5"
+            style={{ borderColor: "#FF3AF2", background: "rgba(255,58,242,0.12)", boxShadow: "0 0 12px rgba(255,58,242,0.4)" }}
+          >
+            <span className="size-2 animate-pulse rounded-full bg-[#FF3AF2]" />
+            <span className="text-xs font-black uppercase tracking-[0.3em] text-[#FF3AF2]">Battle Replay</span>
+          </div>
         </div>
 
-        {/* 赛况 */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        {/* ── Page title ── */}
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">{t0?.name ?? "—"} vs {t1?.name ?? "—"}</h1>
-            <p className="mt-1 text-sm text-zinc-500">{result} · {loadedAt.toLocaleString()}</p>
+            <p className="mb-1 font-mono text-xs font-black uppercase tracking-[0.4em] text-[#7B2FFF]">// battle replay</p>
+            <h1
+              className="text-3xl font-black uppercase tracking-tighter text-white md:text-4xl"
+              style={{ fontFamily: "var(--font-outfit)", textShadow: "2px 2px 0px #7B2FFF, 4px 4px 0px #FF3AF2" }}
+            >
+              {t0?.name ?? "—"}
+              <span className="mx-3" style={{ color: "#FF3AF2" }}>vs</span>
+              {t1?.name ?? "—"}
+            </h1>
+            <p className="mt-1 text-xs font-medium text-white/35">{result} · {loadedAt.toLocaleString()}</p>
           </div>
-          <div className="flex gap-2 shrink-0">
-            {([["胜者", (data.winner_label ?? data.winner) || "—", "text-blue-400"], ["结果", result, "text-white"], ["帧数", String(data.total_ticks), "text-white"]] as const).map(([l, v, c]) => (
-              <div key={l} className="min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
-                <p className="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">{l}</p>
-                <p className={`mt-1 text-sm font-semibold ${c}`}>{v}</p>
+
+          {/* Stat pills */}
+          <div className="flex flex-wrap gap-2 sm:shrink-0">
+            {([
+              { label: "胜者", value: winnerName, color: "#FFE600", icon: <Trophy className="size-3" /> },
+              { label: "结果", value: result,     color: "#FF3AF2", icon: <Swords className="size-3" /> },
+              { label: "总帧", value: String(data.total_ticks), color: "#00F5D4", icon: <Zap className="size-3" /> },
+            ] as const).map(({ label, value, color, icon }) => (
+              <div
+                key={label}
+                className="flex flex-col rounded-2xl px-4 py-2.5"
+                style={{ border: `4px solid ${color}`, background: `${color}12`, boxShadow: `0 0 10px ${color}40` }}
+              >
+                <div className="flex items-center gap-1 mb-0.5" style={{ color }}>
+                  {icon}
+                  <span className="text-[9px] font-black uppercase tracking-[0.25em]">{label}</span>
+                </div>
+                <span className="text-sm font-black text-white">{value}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* 对阵栏 */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900">
+        {/* ── VS card ── */}
+        <div
+          className="overflow-hidden rounded-2xl"
+          style={{ border: "4px solid #FF3AF2", boxShadow: "6px 6px 0 #FFE600, 12px 12px 0 #7B2FFF", background: "rgba(45,27,78,0.5)" }}
+        >
           <div className="flex items-stretch">
-            <div className="flex flex-1 items-center gap-4 px-5 py-4">
-              <TankIcon name={t0?.name ?? ""} color="#3b82f6" border="#2563eb" />
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{t0?.name ?? "—"}</p>
-                {data.winner === t0?.name && <span className="mt-1 inline-block rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">胜者</span>}
+            {/* Tank 1 */}
+            <div className="flex flex-1 items-center gap-4 px-6 py-4">
+              <TankIcon name={t0?.name ?? ""} idx={0} size={52} />
+              <div className="flex flex-col gap-1 min-w-0">
+                <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TANK_COLORS[0]}` }}>
+                  {t0?.name ?? "—"}
+                </p>
+                {data.winner === t0?.name && (
+                  <span
+                    className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                    style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
+                  >
+                    🏆 胜者
+                  </span>
+                )}
               </div>
             </div>
-            <div className="flex items-center justify-center border-x border-zinc-800 px-5">
-              <span className="text-sm font-bold text-zinc-500">VS</span>
+
+            {/* VS divider */}
+            <div
+              className="flex flex-col items-center justify-center px-5"
+              style={{ borderLeft: "4px dashed rgba(255,58,242,0.3)", borderRight: "4px dashed rgba(255,58,242,0.3)" }}
+            >
+              <span
+                className="text-xl font-black uppercase tracking-widest"
+                style={{ color: "#FF3AF2", textShadow: "0 0 12px rgba(255,58,242,0.6)" }}
+              >
+                VS
+              </span>
             </div>
-            <div className="flex flex-1 items-center justify-end gap-4 px-5 py-4">
-              <div className="text-right">
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{t1?.name ?? "—"}</p>
-                {data.winner === t1?.name && <span className="mt-1 inline-block rounded bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">胜者</span>}
+
+            {/* Tank 2 */}
+            <div className="flex flex-1 items-center justify-end gap-4 px-6 py-4">
+              <div className="flex flex-col items-end gap-1 min-w-0">
+                <p className="truncate font-black text-white text-lg" style={{ textShadow: `1px 1px 0 ${TANK_COLORS[1]}` }}>
+                  {t1?.name ?? "—"}
+                </p>
+                {data.winner === t1?.name && (
+                  <span
+                    className="w-fit rounded-full border-4 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                    style={{ borderColor: "#FFE600", color: "#FFE600", background: "rgba(255,230,0,0.15)", boxShadow: "0 0 10px rgba(255,230,0,0.4)" }}
+                  >
+                    🏆 胜者
+                  </span>
+                )}
               </div>
-              <TankIcon name={t1?.name ?? ""} color="#ef4444" border="#dc2626" />
+              <TankIcon name={t1?.name ?? ""} idx={1} size={52} />
             </div>
           </div>
         </div>
 
-        {/* 主体 */}
-        <div className="flex flex-1 gap-4">
+        {/* ── Main content ── */}
+        <div className="flex gap-5 items-start">
 
-          {/* 画布区 */}
-          <div className="flex flex-1 flex-col gap-3 min-w-0 items-center">
-            <div className="flex items-center gap-2 w-full max-w-[560px]">
-              <button onClick={handleReset}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors">
+          {/* Canvas column */}
+          <div className="flex flex-col gap-3 items-center">
+
+            {/* Controls bar */}
+            <div
+              className="flex items-center gap-2 w-full rounded-2xl px-4 py-3"
+              style={{ border: "4px solid rgba(123,47,255,0.5)", background: "rgba(45,27,78,0.4)" }}
+            >
+              <button
+                onClick={handleReset}
+                title="重置"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-[#7B2FFF]/70 text-[#7B2FFF] transition-all duration-150 hover:bg-[#7B2FFF]/15 hover:scale-110"
+              >
                 <SkipBack className="size-3.5" />
               </button>
-              <button onClick={handlePlayPause}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors">
-                {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+              <button
+                onClick={handlePlayPause}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border-4 border-[#FFE600] text-white transition-all duration-200 hover:scale-110 active:scale-95"
+                style={{ background: "linear-gradient(135deg, #FF3AF2, #7B2FFF)", boxShadow: "0 0 14px rgba(255,58,242,0.5), 2px 2px 0 #FFE600" }}
+              >
+                {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
               </button>
-              <input type="range" min={0} max={Math.max(0, total - 1)} value={frameIdx}
-                onChange={handleSlider} className="flex-1 accent-blue-500" />
-              <span className="w-20 shrink-0 text-right text-xs tabular-nums text-zinc-500">
+              <input
+                type="range" min={0} max={Math.max(0, total - 1)} value={frameIdx}
+                onChange={handleSlider}
+                className="flex-1 accent-[#FF3AF2]"
+                style={{ accentColor: "#FF3AF2" }}
+              />
+              <span className="w-20 shrink-0 text-right font-mono text-xs font-black tabular-nums text-[#FF3AF2]">
                 {frameIdx + 1} / {total}
               </span>
-              <button onClick={() => setBgm(b => !b)}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors"
-                title={bgm ? "静音" : "开启音乐"}>
+              <button
+                onClick={() => setBgm(b => !b)}
+                title={bgm ? "静音" : "开启音乐"}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-[#00F5D4]/70 text-[#00F5D4] transition-all duration-150 hover:bg-[#00F5D4]/15 hover:scale-110"
+              >
                 {bgm ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
               </button>
             </div>
 
-            <PixiView
-              data={data} playing={playing}
-              seekFn={seekFn}
-              onTick={setFrameIdx}
-              onEnd={() => setPlaying(false)}
-            />
+            {/* Canvas with Maximalism border */}
+            <div
+              className="overflow-hidden rounded-2xl"
+              style={{ border: "4px solid #FF3AF2", boxShadow: "8px 8px 0 #FFE600, 16px 16px 0 #7B2FFF" }}
+            >
+              <PixiView
+                data={data} playing={playing}
+                seekFn={seekFn}
+                onTick={setFrameIdx}
+                onEnd={() => setPlaying(false)}
+              />
+            </div>
           </div>
 
-          {/* 右侧面板 */}
+          {/* Right panel */}
           <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 shrink-0">
-              <p className="mb-3 text-xs font-bold tracking-widest text-zinc-500 uppercase">坦克状态</p>
-              {data.telemetry[frameIdx]?.tanks.map((t, i) => {
-                const col = i === 0 ? "#3b82f6" : "#ef4444"
-                return (
-                  <div key={t.id} className="flex items-center justify-between py-1.5 last:pb-0">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full" style={{ background: col }} />
-                      <span className="text-sm font-semibold text-white">{t.name}</span>
+
+            {/* Tank status */}
+            <div
+              className="overflow-hidden rounded-2xl shrink-0"
+              style={{ border: "4px solid #00F5D4", background: "rgba(45,27,78,0.5)", boxShadow: "4px 4px 0 rgba(0,245,212,0.3)" }}
+            >
+              <div className="px-4 py-2.5" style={{ borderBottom: "4px dashed rgba(0,245,212,0.4)", background: "rgba(13,13,26,0.4)" }}>
+                <p className="text-xs font-black uppercase tracking-widest text-[#00F5D4]">坦克状态</p>
+              </div>
+              <div className="flex flex-col divide-y-2 divide-dashed divide-[#00F5D4]/20 px-4">
+                {data.telemetry[frameIdx]?.tanks.map((t, i) => {
+                  const col = TANK_COLORS[i % 2]
+                  return (
+                    <div key={t.id} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-full" style={{ background: col, boxShadow: `0 0 6px ${col}` }} />
+                        <span className="text-sm font-black text-white">{t.name}</span>
+                      </div>
+                      <span
+                        className="rounded-full border-2 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide"
+                        style={t.alive
+                          ? { borderColor: "#00F5D4", color: "#00F5D4", background: "rgba(0,245,212,0.12)" }
+                          : { borderColor: "#4b5563", color: "#4b5563" }
+                        }
+                      >
+                        {t.alive ? "存活" : "摧毁"}
+                      </span>
                     </div>
-                    <span className={`text-xs font-medium ${t.alive ? "text-green-400" : "text-zinc-500"}`}>
-                      {t.alive ? "存活" : "已摧毁"}
-                    </span>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
 
-            {/* JS 执行统计 —— 固定高度，始终可见 */}
+            {/* JS execution stats */}
             {data.js_stats && data.js_stats.length > 0 && (() => {
               function fmtUs(us: number): string {
                 if (us < 1000) return `${us.toFixed(1)} µs`
@@ -672,50 +803,49 @@ export default function ReplayPage() {
                 return `${(bytes / 1024 / 1024).toFixed(2)} MB`
               }
               return (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden shrink-0">
-                  <div className="border-b border-zinc-800 px-4 py-2.5">
-                    <p className="text-xs font-bold tracking-widest text-zinc-500 uppercase">JS 执行统计</p>
+                <div
+                  className="overflow-hidden rounded-2xl shrink-0"
+                  style={{ border: "4px solid #7B2FFF", background: "rgba(45,27,78,0.5)", boxShadow: "4px 4px 0 rgba(123,47,255,0.3)" }}
+                >
+                  <div className="px-4 py-2.5" style={{ borderBottom: "4px dashed rgba(123,47,255,0.4)", background: "rgba(13,13,26,0.4)" }}>
+                    <p className="text-xs font-black uppercase tracking-widest text-[#7B2FFF]">JS 执行统计</p>
                   </div>
-                  <div className="flex flex-col divide-y divide-zinc-800">
+                  <div className="flex flex-col divide-y-2 divide-dashed divide-[#7B2FFF]/20">
                     {(() => {
                       const stats = data.js_stats!
-                      // 各指标：[原始值, 是否越小越优]
                       type MetricDef = { label: string; vals: number[]; fmt: (v: number, s: JsExecStats) => string; lowerBetter: boolean }
                       const metrics: MetricDef[] = [
-                        { label: '调用次数', vals: stats.map(s => s.idle_calls),        fmt: v => v.toLocaleString(),        lowerBetter: true  },
-                        { label: '峰值内存', vals: stats.map(s => s.peak_memory_bytes), fmt: v => fmtMem(v),                 lowerBetter: true  },
-                        { label: '平均耗时', vals: stats.map(s => s.avg_exec_us),       fmt: v => fmtUs(v),                  lowerBetter: true  },
-                        { label: '最大耗时', vals: stats.map(s => s.max_exec_us),       fmt: v => fmtUs(v),                  lowerBetter: true  },
-                        { label: '命令数',   vals: stats.map(s => s.commands_issued),   fmt: v => v.toLocaleString(),        lowerBetter: false },
+                        { label: '调用次数', vals: stats.map(s => s.idle_calls),        fmt: v => v.toLocaleString(), lowerBetter: true  },
+                        { label: '峰值内存', vals: stats.map(s => s.peak_memory_bytes), fmt: v => fmtMem(v),          lowerBetter: true  },
+                        { label: '平均耗时', vals: stats.map(s => s.avg_exec_us),       fmt: v => fmtUs(v),           lowerBetter: true  },
+                        { label: '最大耗时', vals: stats.map(s => s.max_exec_us),       fmt: v => fmtUs(v),           lowerBetter: true  },
+                        { label: '命令数',   vals: stats.map(s => s.commands_issued),   fmt: v => v.toLocaleString(), lowerBetter: false },
                         { label: '空调用率', vals: stats.map(s => s.idle_calls > 0 ? s.empty_calls / s.idle_calls : 0),
-                          fmt: (v) => v === 0 ? '0%' : `${(v * 100).toFixed(0)}%`, lowerBetter: true },
+                          fmt: v => v === 0 ? '0%' : `${(v * 100).toFixed(0)}%`, lowerBetter: true },
                       ]
-                      // 为每个指标计算每个坦克的胜负（仅 2 个坦克时有意义）
                       const winnerIdx = (m: MetricDef): number | null => {
                         if (stats.length < 2) return null
                         const [a, b] = m.vals
                         if (a === b) return null
                         return m.lowerBetter ? (a < b ? 0 : 1) : (a > b ? 0 : 1)
                       }
-
                       return stats.map((s, i) => {
-                        const col = i === 0 ? "#3b82f6" : "#ef4444"
+                        const col = TANK_COLORS[i % 2]
                         return (
                           <div key={s.tank_name} className="px-4 py-3 flex flex-col gap-1.5">
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="size-2 rounded-full shrink-0" style={{ background: col }} />
-                              <span className="text-xs font-semibold text-white">{s.tank_name}</span>
+                              <span className="size-2 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 5px ${col}` }} />
+                              <span className="text-xs font-black text-white">{s.tank_name}</span>
                             </div>
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                               {metrics.map(m => {
                                 const wi = winnerIdx(m)
                                 const isWinner = wi === i
                                 const isLoser  = wi !== null && wi !== i
-                                const valColor = isWinner ? 'text-green-400' : isLoser ? 'text-zinc-500' : 'text-zinc-300'
                                 return (
                                   <div key={m.label} className="flex justify-between gap-1">
-                                    <span className="text-[10px] text-zinc-500">{m.label}</span>
-                                    <span className={`text-[10px] tabular-nums font-medium ${valColor}`}>
+                                    <span className="text-[10px] text-white/35">{m.label}</span>
+                                    <span className={`text-[10px] tabular-nums font-black ${isWinner ? "text-[#00F5D4]" : isLoser ? "text-white/30" : "text-white/70"}`}>
                                       {isWinner && <span className="mr-0.5 text-[9px]">▲</span>}
                                       {m.fmt(m.vals[i], s)}
                                     </span>
@@ -724,8 +854,8 @@ export default function ReplayPage() {
                               })}
                               {s.error_count > 0 && (
                                 <div className="col-span-2 flex justify-between gap-1">
-                                  <span className="text-[10px] text-zinc-500">错误数</span>
-                                  <span className="text-[10px] tabular-nums text-red-400 font-medium">{s.error_count}</span>
+                                  <span className="text-[10px] text-white/35">错误数</span>
+                                  <span className="text-[10px] tabular-nums font-black text-[#FF6B35]">{s.error_count}</span>
                                 </div>
                               )}
                             </div>
@@ -738,23 +868,32 @@ export default function ReplayPage() {
               )
             })()}
 
-            {/* 战报 —— flex-1 填充剩余空间 */}
-            <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col min-h-0">
-              <div className="border-b border-zinc-800 px-4 py-2.5 shrink-0">
-                <p className="text-xs font-bold tracking-widest text-zinc-500 uppercase">战报</p>
+            {/* Battle log */}
+            <div
+              className="flex flex-1 flex-col overflow-hidden rounded-2xl min-h-0"
+              style={{ border: "4px solid #FF6B35", background: "rgba(45,27,78,0.5)", boxShadow: "4px 4px 0 rgba(255,107,53,0.3)" }}
+            >
+              <div className="shrink-0 px-4 py-2.5" style={{ borderBottom: "4px dashed rgba(255,107,53,0.4)", background: "rgba(13,13,26,0.4)" }}>
+                <p className="text-xs font-black uppercase tracking-widest text-[#FF6B35]">战报</p>
               </div>
               <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 min-h-0">
                 {data.battle_log.map((line, i) => {
-                  const m = line.match(/\[(?:Turn|Tick)\s*(\d+)\]/i)
+                  const m    = line.match(/\[(?:Turn|Tick)\s*(\d+)\]/i)
                   const tick = m ? Number(m[1]) : null
+                  const past = tick !== null && tick <= frameIdx
                   return (
-                    <p key={i} className={`text-[11px] leading-relaxed transition-colors ${
-                      tick !== null && tick <= frameIdx ? "text-zinc-300" : "text-zinc-600"
-                    }`}>{line}</p>
+                    <p
+                      key={i}
+                      className="text-[11px] leading-relaxed transition-colors font-medium"
+                      style={{ color: past ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.2)" }}
+                    >
+                      {line}
+                    </p>
                   )
                 })}
               </div>
             </div>
+
           </div>
         </div>
 
