@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DeepTank 一键安装 / 更新脚本（仅引擎，前端由 Vercel 托管）
+# DeepTank 一键安装 / 更新脚本（引擎 + 数据库，前端由 Vercel 托管）
 # 用法：curl -sSL https://raw.githubusercontent.com/zzfn/Chassis/main/install.sh | bash
 set -euo pipefail
 
@@ -46,6 +46,17 @@ gen_secret() {
 command -v curl >/dev/null || die "需要 curl"
 [ "$(id -u)" -eq 0 ] || die "请用 sudo 或 root 运行"
 
+# 检测包管理器
+if command -v apt-get >/dev/null; then
+  PKG_MANAGER="apt"
+elif command -v dnf >/dev/null; then
+  PKG_MANAGER="dnf"
+elif command -v yum >/dev/null; then
+  PKG_MANAGER="yum"
+else
+  die "不支持的发行版，需要 apt / dnf / yum"
+fi
+
 # ── 检测架构 ─────────────────────────────────────────────────────────────────
 case "$(uname -m)" in
   x86_64)        BINARY_NAME="deeptank-linux-amd64" ;;
@@ -69,7 +80,9 @@ if [ "$CURRENT" = "$TAG" ]; then
 fi
 [ -n "$CURRENT" ] && info "从 $CURRENT 升级到 $TAG" || info "全新安装 $TAG"
 
-# ── 询问环境变量（仅首次，升级保留已有 .env）────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# 配置向导（首次安装，升级跳过）
+# ══════════════════════════════════════════════════════════════════════════════
 ENV_FILE="$INSTALL_DIR/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -79,29 +92,44 @@ if [ ! -f "$ENV_FILE" ]; then
   echo -e "${BOLD}══════════════════════════════════════════${NC}"
   echo ""
 
-  echo -e "${CYAN}▶ 数据库${NC}"
-  echo "  格式：postgres://用户名:密码@主机:端口/数据库名"
-  DB_URL="$(ask "DATABASE_URL" "postgres://deeptank:deeptank@localhost:5432/deeptank")"
-  echo ""
+  # ── 数据库 ──────────────────────────────────────────────────────────────────
+  echo -e "${CYAN}▶ PostgreSQL${NC}"
+  SETUP_DB="$(ask "是否由脚本自动安装并初始化 PostgreSQL？[y/n]" "y")"
 
-  echo -e "${CYAN}▶ JWT 密钥${NC}"
-  echo "  用于签发登录 Token，建议 32 字符以上随机字符串"
-  JWT_RAW="$(ask_secret "JWT_SECRET")"
-  if [ -z "$JWT_RAW" ]; then
-    JWT_RAW="$(gen_secret)"
-    info "已自动生成 JWT_SECRET"
+  if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
+    DB_HOST="localhost"
+    DB_PORT="5432"
+    DB_NAME="deeptank"
+    DB_USER="deeptank"
+    DB_PASS="$(gen_secret | head -c 24)"
+    DB_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    info "将自动安装 PostgreSQL 并创建数据库 ${DB_NAME}"
+  else
+    echo "  格式：postgres://用户名:密码@主机:端口/数据库名"
+    DB_URL="$(ask "DATABASE_URL" "postgres://deeptank:deeptank@localhost:5432/deeptank")"
+    SETUP_DB="n"
   fi
   echo ""
 
+  # ── JWT ─────────────────────────────────────────────────────────────────────
+  echo -e "${CYAN}▶ JWT 密钥${NC}"
+  echo "  用于签发登录 Token，留空自动生成"
+  JWT_RAW="$(ask_secret "JWT_SECRET")"
+  [ -z "$JWT_RAW" ] && JWT_RAW="$(gen_secret)" && info "已自动生成 JWT_SECRET"
+  echo ""
+
+  # ── 端口 ────────────────────────────────────────────────────────────────────
   echo -e "${CYAN}▶ 引擎监听端口${NC}"
   ENGINE_PORT="$(ask "PORT" "3001")"
   echo ""
 
+  # ── DeepSeek（可选）─────────────────────────────────────────────────────────
   echo -e "${CYAN}▶ DeepSeek API Key（可选，用于 AI 生成坦克外观）${NC}"
   DEEPSEEK_KEY="$(ask_secret "DEEPSEEK_API_KEY")"
   echo ""
   echo -e "${BOLD}══════════════════════════════════════════${NC}"
 
+  # 写 .env
   mkdir -p "$INSTALL_DIR"
   cat > "$ENV_FILE" <<ENVEOF
 DATABASE_URL=${DB_URL}
@@ -109,15 +137,59 @@ JWT_SECRET=${JWT_RAW}
 PORT=${ENGINE_PORT}
 ENVEOF
   [ -n "$DEEPSEEK_KEY" ] && echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> "$ENV_FILE"
-
   success ".env 已写入 $ENV_FILE"
+
 else
   info ".env 已存在，跳过配置向导（如需重新配置请删除 $ENV_FILE）"
+  SETUP_DB="n"
   ENGINE_PORT="$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d ' ')"
   ENGINE_PORT="${ENGINE_PORT:-3001}"
 fi
 
-# ── 下载二进制 ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# 安装 PostgreSQL（仅在用户选择自动安装时）
+# ══════════════════════════════════════════════════════════════════════════════
+if [ "${SETUP_DB:-n}" = "y" ] || [ "${SETUP_DB:-n}" = "Y" ]; then
+  if command -v psql >/dev/null 2>&1; then
+    info "PostgreSQL 已安装，跳过安装步骤"
+  else
+    info "安装 PostgreSQL..."
+    case "$PKG_MANAGER" in
+      apt)
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib
+        ;;
+      dnf) dnf install -y postgresql-server postgresql-contrib && postgresql-setup --initdb ;;
+      yum) yum install -y postgresql-server postgresql-contrib && postgresql-setup initdb ;;
+    esac
+    success "PostgreSQL 安装完成"
+  fi
+
+  # 确保服务运行
+  systemctl enable postgresql
+  systemctl start  postgresql
+  # 等待就绪（最多 15 秒）
+  for i in $(seq 1 15); do
+    pg_isready -q && break
+    sleep 1
+  done
+  pg_isready -q || die "PostgreSQL 未能在 15 秒内就绪"
+  success "PostgreSQL 已就绪"
+
+  # 创建用户和数据库（幂等）
+  info "初始化数据库 ${DB_NAME}..."
+  su -s /bin/sh postgres -c "
+    psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'\" \
+      | grep -q 1 || psql -c \"CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';\"
+    psql -tc \"SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'\" \
+      | grep -q 1 || psql -c \"CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};\"
+  "
+  success "数据库 ${DB_NAME} 已就绪（用户：${DB_USER}）"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 下载并安装二进制
+# ══════════════════════════════════════════════════════════════════════════════
 BIN_URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY_NAME}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -126,13 +198,12 @@ info "下载 $BINARY_NAME..."
 curl -sSfL "$BIN_URL" -o "$TMP/deeptank" || die "下载失败：$BIN_URL"
 chmod +x "$TMP/deeptank"
 
-# ── 停止旧服务 ────────────────────────────────────────────────────────────────
+# 停止旧服务
 if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
   info "停止 $SERVICE..."
   systemctl stop "$SERVICE"
 fi
 
-# ── 安装二进制 ────────────────────────────────────────────────────────────────
 mkdir -p "$INSTALL_DIR"
 install -m 755 "$TMP/deeptank" "$BIN_PATH"
 echo "$TAG" > "$INSTALL_DIR/VERSION"
@@ -163,7 +234,7 @@ else
   info "$SVC_FILE 已存在，跳过（如需重置：rm $SVC_FILE）"
 fi
 
-# ── 启动服务 ──────────────────────────────────────────────────────────────────
+# ── 启动引擎 ──────────────────────────────────────────────────────────────────
 systemctl daemon-reload
 systemctl enable "$SERVICE"
 systemctl start  "$SERVICE"
