@@ -50,6 +50,16 @@ async fn agent_tank_context(
         Some(ref a) => (Some(a.code.clone()), Some(a.id)),
         None        => (None, None),
     };
+
+    // 当前已提交版本数（下一次提交将是 current_version + 1）
+    use sqlx::Row as _;
+    let current_version: i64 = sqlx::query(
+        "SELECT COUNT(*) AS cnt FROM agents WHERE user_id = $1 AND name = $2"
+    )
+    .bind(auth.user_id).bind(&auth.agent_name)
+    .fetch_one(pool).await
+    .map(|r| r.get::<i64, _>("cnt"))
+    .unwrap_or(0);
     use sqlx::Row as _;
     let elo: f64 = sqlx::query(
         "SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2"
@@ -89,6 +99,8 @@ async fn agent_tank_context(
             "rankPoints": rank_points,
         },
         "code": code,
+        "current_version": current_version,
+        "next_version": current_version + 1,
         "maps": [{"id": "classic", "name": "经典"}],
         "simulate_cooldown_remaining_ms": 0,
         "nextSimulationAt": now_iso,
