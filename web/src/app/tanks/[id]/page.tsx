@@ -319,6 +319,7 @@ export default function TankDetailPage() {
   const [skinSaving, setSkinSaving] = useState(false)
   const [skinSaved, setSkinSaved] = useState(false)
   const [skinError, setSkinError] = useState<string | null>(null)
+  const [ownedBullets, setOwnedBullets] = useState<Set<string>>(new Set(["default"]))
 
   // 分享弹窗
   const [shareOpen, setShareOpen] = useState(false)
@@ -336,6 +337,21 @@ export default function TankDetailPage() {
   async function loadSkin() {
     const res = await fetch(`${apiBase}/api/tanks/${id}/skin`)
     if (res.ok) setSkin(await res.json())
+  }
+
+  async function loadShopInventory() {
+    const token = getCookie("token")
+    if (!token) return
+    const res = await fetch(`${apiBase}/api/shop/inventory`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    const owned = new Set<string>(["default"])
+    for (const item of (data.items ?? []) as { item_type: string; item_id: string }[]) {
+      if (item.item_type === "bullet") owned.add(item.item_id)
+    }
+    setOwnedBullets(owned)
   }
 
   async function generateSkin() {
@@ -367,7 +383,15 @@ export default function TankDetailPage() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(skin),
       })
-      if (res.ok) setSkinSaved(true)
+      if (!res.ok) return
+      setSkinSaved(true)
+      // 同步商店 equipped 状态
+      const bulletId = skin.bullet_style ?? "default"
+      await fetch(`${apiBase}/api/shop/equip`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ item_type: "bullet", item_id: bulletId }),
+      })
     } finally { setSkinSaving(false) }
   }
 
@@ -393,7 +417,7 @@ export default function TankDetailPage() {
   useEffect(() => {
     if (tank) {
       loadSkin()
-      if (isOwner) { loadKey(); loadVersions() }
+      if (isOwner) { loadKey(); loadVersions(); loadShopInventory() }
     }
   }, [tank])
 
@@ -1317,17 +1341,24 @@ ${guideUrl}
                         <p className="mb-3 text-xs font-bold text-black/60">选择你的坦克在对战回放中发射的弹丸外观。</p>
                         <div className="grid grid-cols-5 gap-2">
                           {BULLET_STYLES.map(s => {
-                            const active = (skin.bullet_style ?? "default") === s.value
+                            const active  = (skin.bullet_style ?? "default") === s.value
+                            const owned   = ownedBullets.has(s.value)
                             return (
                               <button
                                 key={s.value}
-                                onClick={() => setSkin(prev => ({ ...prev, bullet_style: s.value }))}
-                                className={`flex flex-col items-center gap-1.5 border-4 border-black p-2.5 transition-colors ${
+                                onClick={() => owned && setSkin(prev => ({ ...prev, bullet_style: s.value }))}
+                                title={owned ? s.label : `在商店购买「${s.label}」`}
+                                className={`relative flex flex-col items-center gap-1.5 border-4 border-black p-2.5 transition-colors ${
                                   active
                                     ? "bg-[#FFD93D] shadow-[3px_3px_0px_0px_#000]"
-                                    : "bg-white hover:bg-white shadow-[2px_2px_0px_0px_#000]"
+                                    : owned
+                                    ? "bg-white hover:bg-[#FFF9C4] shadow-[2px_2px_0px_0px_#000]"
+                                    : "bg-black/5 opacity-50 cursor-not-allowed shadow-[2px_2px_0px_0px_#000]"
                                 }`}
                               >
+                                {!owned && (
+                                  <Lock className="absolute right-1 top-1 size-3 text-black/50" />
+                                )}
                                 <svg viewBox="-10 -10 20 20" width="32" height="32">
                                   {s.shape === "diamond" && (
                                     <polygon points="0,-7 7,0 0,7 -7,0" fill={s.color} opacity="0.9" />
@@ -1347,6 +1378,13 @@ ${guideUrl}
                             )
                           })}
                         </div>
+                        {ownedBullets.size < BULLET_STYLES.length && (
+                          <Link href="/shop" onClick={() => setManageOpen(false)}
+                            className="mt-2 inline-block text-xs font-black text-black/40 underline hover:text-black transition-colors"
+                          >
+                            前往商店解锁更多样式 →
+                          </Link>
+                        )}
                       </div>
                     )}
 
