@@ -2,21 +2,21 @@
 
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Loader2, Plus, Shield, Swords, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Loader2, Plus, Shield, Swords, MoreHorizontal, Pencil, Trash2, Shuffle, X } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
 import { getEloTier } from "@/lib/elo"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
+
+const CARD_ACCENTS  = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35", "#7B2FFF"]
+const CARD_SHADOWS: [string, string][] = [
+  ["#FFE600", "#7B2FFF"],
+  ["#FF3AF2", "#FFE600"],
+  ["#00F5D4", "#FF3AF2"],
+  ["#7B2FFF", "#00F5D4"],
+  ["#FF3AF2", "#FF6B35"],
+]
 
 const DEFAULT_CODE = `// 入门模板：朝敌冲锋，遇墙绕行，冷却好就开火
 function onIdle(me, enemy, game) {
@@ -42,7 +42,6 @@ function onIdle(me, enemy, game) {
     return !!(row && (row[nx] === "." || row[nx] === "o"));
   }
 
-  // 朝敌方向：优先离敌更远的轴，被堵改走另一轴
   var want = Math.abs(dx) >= Math.abs(dy)
     ? (dx > 0 ? "east" : "west")
     : (dy > 0 ? "south" : "north");
@@ -52,22 +51,13 @@ function onIdle(me, enemy, game) {
       : (dx !== 0 ? (dx > 0 ? "east"  : "west")  : "east");
   }
 
-  // 转向目标方向
   if (turnTo(want)) return;
-
-  // 冷却好就开火
   if (me.tank.shootCooldown === 0) me.fire();
-
-  // 前进（路通就走，否则转向解锁）
   if (free(want)) me.go();
   else me.turn("right");
 }`
 
-interface TankSkin {
-  svg?: string
-  description?: string
-}
-
+interface TankSkin { svg?: string; description?: string }
 interface Tank {
   agent_id: string
   agent_name: string
@@ -79,44 +69,141 @@ interface Tank {
   skin?: TankSkin
 }
 
-function TankAvatar({ name, skin }: { name: string; skin?: TankSkin }) {
+/* ── Avatar ── */
+function TankAvatar({ name, skin, size = 20 }: { name: string; skin?: TankSkin; size?: number }) {
   const initials = name.slice(0, 2).toUpperCase()
-  const hue = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  const hue      = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  const color    = `hsl(${hue}, 70%, 60%)`
+  const px       = size * 4
   return (
     <div
-      className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-700 text-xl font-bold text-white"
-      style={{ background: `hsl(${hue},40%,${skin?.svg ? 10 : 22}%)` }}
+      className="shrink-0 overflow-hidden rounded-full border-4 font-black text-white flex items-center justify-center"
+      style={{
+        width:       px,
+        height:      px,
+        fontSize:    px * 0.28,
+        background:  `hsl(${hue}, 40%, ${skin?.svg ? 10 : 15}%)`,
+        borderColor: color,
+        boxShadow:   `0 0 16px ${color}60`,
+      }}
     >
       {skin?.svg ? (
-        <svg
-          viewBox="-20 -14 40 28"
-          width="72"
-          height="50"
-          dangerouslySetInnerHTML={{ __html: skin.svg }}
-        />
-      ) : (
-        initials
-      )}
+        <svg viewBox="-20 -14 40 28" width={px * 0.8} height={px * 0.55}
+          dangerouslySetInnerHTML={{ __html: skin.svg }} />
+      ) : initials}
     </div>
   )
 }
 
+/* ── Maximalism input ── */
+function MaxInput({
+  value, onChange, onKeyDown, placeholder, type = "text", disabled, autoFocus, accent,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  placeholder?: string
+  type?: string
+  disabled?: boolean
+  autoFocus?: boolean
+  accent: string
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      disabled={disabled}
+      autoFocus={autoFocus}
+      className="w-full rounded-full border-4 bg-[#0D0D1A]/70 px-5 py-3 text-base font-bold text-white placeholder:text-white/25 outline-none transition-all duration-200 disabled:opacity-50"
+      style={{ borderColor: `${accent}70` }}
+      onFocus={e => { e.target.style.borderColor = accent; e.target.style.boxShadow = `0 0 14px ${accent}50` }}
+      onBlur={e =>  { e.target.style.borderColor = `${accent}70`; e.target.style.boxShadow = "none" }}
+    />
+  )
+}
+
+/* ── Delete confirm overlay ── */
+function DeleteConfirm({
+  target, onCancel, onConfirm,
+}: {
+  target: { id: string; name: string }
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0D0D1A]/85 px-4 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+        animate={{ opacity: 1, scale: 1,    y: 0  }}
+        exit={{   opacity: 0, scale: 0.92, y: 16  }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="w-full max-w-md overflow-hidden rounded-3xl backdrop-blur-md"
+        style={{
+          background:  "rgba(45,27,78,0.9)",
+          border:      "4px solid #FF6B35",
+          boxShadow:   "8px 8px 0 #FF3AF2, 0 0 30px rgba(255,107,53,0.3)",
+        }}
+      >
+        <div className="px-7 py-5" style={{ borderBottom: "4px dashed #FF6B35" }}>
+          <h2
+            className="text-2xl font-black uppercase tracking-tight text-white"
+            style={{ textShadow: "2px 2px 0 #FF6B35" }}
+          >
+            删除坦克？
+          </h2>
+          <p className="mt-1 text-sm font-bold text-[#FF6B35]">「{target.name}」</p>
+        </div>
+        <div className="px-7 py-5">
+          <p className="text-sm font-medium text-white/60">
+            该坦克的全部历史版本、皮肤、Elo 与绑定密钥都会被清除（对战记录保留）。此操作不可撤销。
+          </p>
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={onCancel}
+              className="flex-1 rounded-full border-4 border-dashed border-[#00F5D4] py-3 text-sm font-black uppercase tracking-widest text-[#00F5D4] transition-all duration-150 hover:bg-[#00F5D4]/10"
+            >
+              取消
+            </button>
+            <button
+              onClick={onConfirm}
+              className="flex-1 rounded-full border-4 border-[#FF6B35] py-3 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.02] active:scale-95"
+              style={{
+                background:  "linear-gradient(135deg, #FF6B35, #FF3AF2)",
+                boxShadow:   "0 0 16px rgba(255,107,53,0.4), 3px 3px 0 #FF6B35",
+              }}
+            >
+              确认删除
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+/* ── Main content ── */
 function TanksContent() {
-  const router = useRouter()
+  const router       = useRouter()
   const searchParams = useSearchParams()
-  const [tanks, setTanks] = useState<Tank[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [tanks,    setTanks]    = useState<Tank[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState<string | null>(null)
 
-  const [showNew, setShowNew] = useState(false)
-  const [newName, setNewName] = useState("")
-  const [skinDesc, setSkinDesc] = useState("")
-  const [creating, setCreating] = useState(false)
-  const [creatingStep, setCreatingStep] = useState<"" | "agent" | "skin">("")
-  const [createError, setCreateError] = useState<string | null>(null)
+  const [showNew,       setShowNew]       = useState(false)
+  const [newName,       setNewName]       = useState("")
+  const [skinDesc,      setSkinDesc]      = useState("")
+  const [creating,      setCreating]      = useState(false)
+  const [creatingStep,  setCreatingStep]  = useState<"" | "agent" | "skin">("")
+  const [createError,   setCreateError]   = useState<string | null>(null)
 
-  const [menuOpen, setMenuOpen] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
+  const [deletingId,  setDeletingId]  = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -132,7 +219,6 @@ function TanksContent() {
       .finally(() => setLoading(false))
   }, [router])
 
-  // 点击外部关闭菜单
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(null)
@@ -141,12 +227,13 @@ function TanksContent() {
     return () => document.removeEventListener("mousedown", onDown)
   }, [])
 
+  function openNew() { setShowNew(true); setCreateError(null); setNewName(""); setSkinDesc("") }
+  function closeNew() { setShowNew(false); setCreateError(null) }
+
   function randomName() {
-    const prefixes = ["Iron","Steel","Shadow","Storm","Blaze","Void","Nova","Apex","Titan","Ghost","Frost","Ember"]
-    const suffixes = ["Strike","Runner","Guard","Hunter","Blade","Wolf","Hawk","Rex","Zero","Prime","Core","Viper"]
-    const p = prefixes[Math.floor(Math.random() * prefixes.length)]
-    const s = suffixes[Math.floor(Math.random() * suffixes.length)]
-    setNewName(`${p}${s}`)
+    const p = ["Iron","Steel","Shadow","Storm","Blaze","Void","Nova","Apex","Titan","Ghost","Frost","Ember"]
+    const s = ["Strike","Runner","Guard","Hunter","Blade","Wolf","Hawk","Rex","Zero","Prime","Core","Viper"]
+    setNewName(`${p[Math.floor(Math.random() * p.length)]}${s[Math.floor(Math.random() * s.length)]}`)
   }
 
   async function handleCreate() {
@@ -155,15 +242,13 @@ function TanksContent() {
     if (!newName.trim()) { setCreateError("请输入坦克名称"); return }
     setCreating(true); setCreateError(null); setCreatingStep("agent")
     try {
-      const res = await fetch(`${apiBase}/api/agent`, {
-        method: "POST",
+      const res  = await fetch(`${apiBase}/api/agent`, {
+        method:  "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), code: DEFAULT_CODE }),
+        body:    JSON.stringify({ name: newName.trim(), code: DEFAULT_CODE }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "创建失败")
-
-      // 有样式描述则生成皮肤（失败不阻塞创建，可在详情页重试）
       const desc = skinDesc.trim()
       if (desc) {
         setCreatingStep("skin")
@@ -173,12 +258,10 @@ function TanksContent() {
           body: JSON.stringify({ description: desc }),
         }).catch(() => {})
       }
-
       router.push(`/tanks/${data.agent_id}`)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "创建失败")
-      setCreating(false)
-      setCreatingStep("")
+      setCreating(false); setCreatingStep("")
     }
   }
 
@@ -190,8 +273,7 @@ function TanksContent() {
     setDeleteTarget(null); setMenuOpen(null); setDeletingId(tankId); setError(null)
     try {
       const res = await fetch(`${apiBase}/api/tanks/${tankId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -207,227 +289,363 @@ function TanksContent() {
 
   return (
     <>
-    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
-      {/* 顶部操作栏 */}
-      <div className="mb-6">
-        <button
-          onClick={() => { setShowNew(v => !v); setCreateError(null); setNewName(""); setSkinDesc("") }}
-          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
-        >
-          <Plus className="size-4" />
-          新建坦克
-        </button>
-      </div>
+    <main className="relative flex flex-1 flex-col overflow-hidden bg-[#0D0D1A] px-4 py-10">
 
-      {/* 新建坦克模态框 */}
+      {/* Background patterns */}
+      <div className="pointer-events-none absolute inset-0 pattern-dots opacity-[0.08]" />
+      <div className="pointer-events-none absolute inset-0 pattern-stripes" />
+
+      {/* Floating decorations */}
+      <div className="animate-max-float pointer-events-none absolute top-[6%] right-[4%] select-none text-5xl" aria-hidden="true">🛡️</div>
+      <div className="animate-max-bounce pointer-events-none absolute top-[14%] left-[3%] select-none text-4xl" aria-hidden="true">⚡</div>
+      <div
+        className="animate-max-spin-slow pointer-events-none absolute bottom-[8%] right-[5%] size-14 rounded-full"
+        style={{ border: "4px solid #FF3AF2", opacity: 0.18 }}
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto w-full max-w-3xl flex flex-col gap-8">
+
+        {/* ── Header ── */}
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="mb-2 font-mono text-xs font-black uppercase tracking-[0.4em] text-[#FF3AF2]">
+              // my arsenal
+            </p>
+            <h1
+              className="text-5xl font-black uppercase tracking-tighter text-white md:text-6xl"
+              style={{
+                fontFamily: "var(--font-outfit)",
+                textShadow: "2px 2px 0px #7B2FFF, 4px 4px 0px #FF3AF2",
+              }}
+            >
+              我的坦克
+            </h1>
+          </div>
+
+          <motion.button
+            onClick={openNew}
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-2 rounded-full border-4 border-[#FFE600] px-6 py-3 text-sm font-black uppercase tracking-widest text-white"
+            style={{
+              background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
+              boxShadow:   "0 0 20px rgba(255,58,242,0.4), 6px 6px 0 #FFE600",
+            }}
+          >
+            <Plus className="size-4" />
+            新建坦克
+          </motion.button>
+        </div>
+
+        {/* ── Error ── */}
+        {error && (
+          <div
+            className="rounded-2xl px-4 py-3 text-sm font-bold text-[#FF6B35]"
+            style={{ border: "4px dashed #FF6B35", background: "rgba(255,107,53,0.08)" }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* ── Loading ── */}
+        {loading && (
+          <div className="flex items-center gap-3 py-20 justify-center">
+            <Loader2 className="size-5 animate-spin text-[#FF3AF2]" />
+            <span className="text-sm font-black uppercase tracking-widest text-[#FF3AF2]">加载中…</span>
+          </div>
+        )}
+
+        {/* ── Empty state ── */}
+        {!loading && !error && tanks.length === 0 && (
+          <div className="flex flex-col items-center gap-4 py-24">
+            <span className="animate-max-bounce text-6xl" aria-hidden="true">🎯</span>
+            <p className="text-sm font-black uppercase tracking-widest text-white/40">
+              还没有坦克，点击「新建坦克」开始
+            </p>
+          </div>
+        )}
+
+        {/* ── Tank cards ── */}
+        <div className="flex flex-col gap-6" ref={menuRef}>
+          {tanks.map((tank, idx) => {
+            const elo     = Math.round(tank.elo ?? 1000)
+            const wins    = tank.pvp_wins    ?? 0
+            const losses  = tank.pvp_losses  ?? 0
+            const battles = tank.pvp_battles ?? 0
+            const tier    = getEloTier(elo, battles)
+            const winRate = battles > 0 ? Math.round((wins / battles) * 100) : 0
+            const accent  = CARD_ACCENTS[idx % CARD_ACCENTS.length]
+            const [sh1, sh2] = CARD_SHADOWS[idx % CARD_SHADOWS.length]
+            const tilt    = idx % 2 === 0 ? "0.6deg" : "-0.6deg"
+
+            return (
+              <div key={tank.agent_id} style={{ transform: `rotate(${tilt})` }}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0  }}
+                  transition={{ duration: 0.3, delay: idx * 0.06 }}
+                  whileHover={{ y: -6 }}
+                  className="relative overflow-hidden rounded-3xl backdrop-blur-sm"
+                  style={{
+                    background:  "rgba(45,27,78,0.6)",
+                    border:      `4px solid ${accent}`,
+                    boxShadow:   `8px 8px 0 ${sh1}, 16px 16px 0 ${sh2}`,
+                  }}
+                >
+                  {/* ⋯ context menu */}
+                  <div className="absolute right-4 top-4 z-10">
+                    <button
+                      onClick={() => setMenuOpen(menuOpen === tank.agent_id ? null : tank.agent_id)}
+                      className="rounded-full border-2 p-1.5 transition-all duration-150 hover:scale-110"
+                      style={{
+                        borderColor: `${accent}60`,
+                        color:       accent,
+                        background:  `${accent}12`,
+                      }}
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+
+                    <AnimatePresence>
+                      {menuOpen === tank.agent_id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                          animate={{ opacity: 1, scale: 1,    y: 0  }}
+                          exit={{   opacity: 0, scale: 0.92, y: -6  }}
+                          transition={{ duration: 0.14 }}
+                          className="absolute right-0 top-10 z-50 min-w-[152px] overflow-hidden rounded-2xl py-1"
+                          style={{
+                            background:  "#1A0D2E",
+                            border:      `4px solid ${accent}`,
+                            boxShadow:   `4px 4px 0 ${sh1}`,
+                          }}
+                        >
+                          <button
+                            onClick={() => { router.push(`/tanks/${tank.agent_id}`); setMenuOpen(null) }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-black uppercase tracking-wide text-white transition-colors duration-100 hover:bg-white/5"
+                          >
+                            <Pencil className="size-3.5" style={{ color: accent }} />
+                            编辑代码
+                          </button>
+                          <div className="mx-3 my-1 border-t-2 border-dashed" style={{ borderColor: `${accent}40` }} />
+                          <button
+                            onClick={() => { setDeleteTarget({ id: tank.agent_id, name: tank.agent_name }); setMenuOpen(null) }}
+                            disabled={deletingId === tank.agent_id}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-black uppercase tracking-wide text-[#FF6B35] transition-colors duration-100 hover:bg-[#FF6B35]/10 disabled:opacity-40"
+                          >
+                            {deletingId === tank.agent_id
+                              ? <><Loader2 className="size-3.5 animate-spin" /> 删除中…</>
+                              : <><Trash2 className="size-3.5" /> 删除</>}
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Main info */}
+                  <div className="flex gap-5 p-6">
+                    <TankAvatar name={tank.agent_name} skin={tank.skin} size={20} />
+                    <div className="flex flex-1 flex-col justify-center gap-2 min-w-0 pr-10">
+                      <h3
+                        className="truncate text-2xl font-black text-white"
+                        style={{ textShadow: `1px 1px 0 ${accent}` }}
+                      >
+                        {tank.agent_name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border-4 px-3 py-0.5 text-xs font-black uppercase tracking-wide"
+                          style={{
+                            borderColor: tier.color,
+                            color:       tier.color,
+                            background:  `${tier.color}18`,
+                            boxShadow:   `0 0 8px ${tier.color}40`,
+                          }}
+                        >
+                          <Shield className="size-3" />
+                          {tier.label}
+                        </span>
+                        <span
+                          className="rounded-full border-2 px-3 py-0.5 font-mono text-xs font-black"
+                          style={{ borderColor: `${accent}50`, color: accent }}
+                        >
+                          Elo {elo}
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium text-white/45">
+                        {battles === 0
+                          ? "暂无对战 · 去竞技场打第一场吧"
+                          : `${wins} 胜 ${losses} 负 · 胜率 ${winRate}%`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action bar */}
+                  <div
+                    className="flex items-center gap-3 px-6 py-4"
+                    style={{ borderTop: `4px dashed ${accent}50`, background: "rgba(13,13,26,0.4)" }}
+                  >
+                    <button
+                      onClick={() => router.push(`/tanks/${tank.agent_id}`)}
+                      className="rounded-full border-4 border-dashed px-5 py-2 text-sm font-black uppercase tracking-widest transition-all duration-150 hover:scale-105"
+                      style={{ borderColor: accent, color: accent }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${accent}12` }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent" }}
+                    >
+                      详情
+                    </button>
+                    <button
+                      onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-full border-4 border-[#FFE600] py-2 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.03] active:scale-95"
+                      style={{
+                        background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
+                        boxShadow:   "0 0 12px rgba(255,58,242,0.35), 3px 3px 0 #FFE600",
+                      }}
+                    >
+                      <Swords className="size-4" />
+                      立即对战
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </main>
+
+    {/* ── Create modal ── */}
+    <AnimatePresence>
       {showNew && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          onClick={e => { if (e.target === e.currentTarget) { setShowNew(false); setCreateError(null) } }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0D0D1A]/85 px-4 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) closeNew() }}
         >
-          <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-
-            {/* 头部 */}
-            <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 20 }}
+            animate={{ opacity: 1, scale: 1,    y: 0  }}
+            exit={{   opacity: 0, scale: 0.94, y: 20  }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="w-full max-w-lg overflow-hidden rounded-3xl backdrop-blur-md"
+            style={{
+              background:  "rgba(45,27,78,0.92)",
+              border:      "4px solid #7B2FFF",
+              boxShadow:   "8px 8px 0 #00F5D4, 16px 16px 0 #FF3AF2, 0 0 40px rgba(123,47,255,0.3)",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              className="flex items-start justify-between gap-4 px-7 py-5"
+              style={{ borderBottom: "4px solid #00F5D4", background: "rgba(13,13,26,0.4)" }}
+            >
               <div>
-                <h2 className="text-lg font-bold text-white">创建坦克</h2>
-                <p className="mt-1 text-sm text-zinc-400">给坦克取名，描述一下你想要的外观，让它带着专属皮肤入场。代码可以之后在详情页慢慢调。</p>
+                <h2
+                  className="text-2xl font-black uppercase tracking-tight text-white"
+                  style={{ fontFamily: "var(--font-outfit)", textShadow: "2px 2px 0 #7B2FFF" }}
+                >
+                  创建坦克
+                </h2>
+                <p className="mt-1 text-sm font-medium text-white/50">
+                  取名、描述外观，代码之后在详情页慢慢调。
+                </p>
               </div>
               <button
-                onClick={() => { setShowNew(false); setCreateError(null) }}
-                className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:border-zinc-500 hover:text-white transition-colors"
+                onClick={closeNew}
+                className="shrink-0 rounded-full border-4 border-dashed border-[#FF3AF2]/60 p-1.5 text-[#FF3AF2] transition-all duration-150 hover:bg-[#FF3AF2]/10 hover:scale-110"
               >
-                关闭
+                <X className="size-4" />
               </button>
             </div>
 
-            <div className="flex flex-col gap-5 p-5">
-              {/* 坦克名称 */}
-              <div>
-                <p className="mb-2 text-sm font-medium text-zinc-300">坦克名称</p>
+            {/* Modal body */}
+            <div className="flex flex-col gap-5 px-7 py-6">
+              {/* Name */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-black uppercase tracking-widest text-[#FF3AF2]">坦克名称</label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={e => { setNewName(e.target.value); setCreateError(null) }}
-                    onKeyDown={e => e.key === "Enter" && handleCreate()}
-                    placeholder="例如：IronStrike、NovaHawk…"
-                    autoFocus
-                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div className="flex-1">
+                    <MaxInput
+                      value={newName}
+                      onChange={v => { setNewName(v); setCreateError(null) }}
+                      onKeyDown={e => e.key === "Enter" && handleCreate()}
+                      placeholder="IronStrike、NovaHawk…"
+                      autoFocus
+                      accent="#FF3AF2"
+                    />
+                  </div>
                   <button
                     onClick={randomName}
-                    title="随机生成名称"
-                    className="rounded-lg border border-zinc-700 px-3 py-2.5 text-sm text-zinc-400 hover:border-zinc-500 hover:text-white transition-colors"
+                    title="随机生成"
+                    className="rounded-full border-4 border-dashed border-[#FFE600] px-4 py-2 text-xs font-black uppercase tracking-widest text-[#FFE600] transition-all duration-150 hover:bg-[#FFE600]/10 hover:scale-105"
                   >
-                    随机
+                    <Shuffle className="size-4" />
                   </button>
                 </div>
               </div>
 
-              {/* 坦克样式 */}
-              <div>
-                <p className="mb-1 text-sm font-semibold text-zinc-300">坦克样式</p>
-                <p className="mb-3 text-xs text-zinc-500">用一句话描述坦克外观，DeepSeek 将生成专属 SVG 皮肤。留空可跳过，之后在详情页随时生成。</p>
+              {/* Skin description */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-black uppercase tracking-widest text-[#00F5D4]">
+                  坦克样式 <span className="font-medium normal-case tracking-normal text-white/30">（可选）</span>
+                </label>
+                <p className="text-xs text-white/35">
+                  用一句话描述外观，AI 将生成专属 SVG 皮肤。留空可跳过。
+                </p>
                 <textarea
                   value={skinDesc}
                   onChange={e => setSkinDesc(e.target.value)}
-                  placeholder="例如：一辆重型工业风坦克，厚装甲板和宽履带，深灰色涂装，带红色警戒线…"
+                  placeholder="例如：重型工业风，厚装甲板，深灰涂装带红色警戒线…"
                   rows={3}
                   disabled={creating}
-                  className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                  className="w-full resize-none rounded-2xl border-4 bg-[#0D0D1A]/70 px-5 py-3 text-sm font-bold text-white placeholder:text-white/25 outline-none transition-all duration-200 disabled:opacity-50"
+                  style={{ borderColor: "rgba(0,245,212,0.5)" }}
+                  onFocus={e => { e.target.style.borderColor = "#00F5D4"; e.target.style.boxShadow = "0 0 14px rgba(0,245,212,0.4)" }}
+                  onBlur={e =>  { e.target.style.borderColor = "rgba(0,245,212,0.5)"; e.target.style.boxShadow = "none" }}
                 />
               </div>
 
-              {createError && <p className="rounded-lg bg-red-950 px-3 py-2 text-xs text-red-400">{createError}</p>}
+              {createError && (
+                <div
+                  className="rounded-xl px-4 py-3 text-sm font-bold text-[#FF6B35]"
+                  style={{ border: "4px dashed #FF6B35", background: "rgba(255,107,53,0.08)" }}
+                >
+                  {createError}
+                </div>
+              )}
             </div>
 
-            {/* 底部按钮 */}
-            <div className="border-t border-zinc-800 px-5 py-4">
+            {/* Modal footer */}
+            <div className="px-7 py-5" style={{ borderTop: "4px dashed #7B2FFF" }}>
               <button
                 onClick={handleCreate}
                 disabled={creating || !newName.trim()}
-                className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+                className="flex w-full items-center justify-center gap-2 rounded-full border-4 border-[#FFE600] py-4 text-base font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.02] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{
+                  background:  "linear-gradient(135deg, #7B2FFF, #FF3AF2, #00F5D4)",
+                  boxShadow:   creating ? "none" : "0 0 20px rgba(123,47,255,0.4), 4px 4px 0 #FFE600",
+                }}
               >
                 {creating ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="size-4 animate-spin" />
-                    {creatingStep === "skin" ? "生成皮肤中…" : "创建中…"}
-                  </span>
+                  <><Loader2 className="size-4 animate-spin" />{creatingStep === "skin" ? "生成皮肤中…" : "创建中…"}</>
                 ) : "创建坦克"}
               </button>
             </div>
-
-          </div>
+          </motion.div>
         </div>
       )}
+    </AnimatePresence>
 
-      {error && <p className="mb-4 rounded bg-red-950 px-3 py-2 text-sm text-red-400">{error}</p>}
-
-      {loading && (
-        <div className="flex items-center gap-2 py-12 text-sm text-zinc-500">
-          <Loader2 className="size-4 animate-spin" /> 加载中...
-        </div>
+    {/* ── Delete confirm ── */}
+    <AnimatePresence>
+      {deleteTarget && (
+        <DeleteConfirm
+          target={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
       )}
-
-      {!loading && !error && tanks.length === 0 && (
-        <p className="py-16 text-center text-sm text-zinc-500">
-          还没有坦克，点击「新建坦克」开始
-        </p>
-      )}
-
-      {/* 坦克卡片列表 */}
-      <div className="flex flex-col gap-3" ref={menuRef}>
-        {tanks.map(tank => {
-          const elo     = Math.round(tank.elo ?? 1000)
-          const wins    = tank.pvp_wins    ?? 0
-          const losses  = tank.pvp_losses  ?? 0
-          const battles = tank.pvp_battles ?? 0
-          const tier    = getEloTier(elo, battles)
-          const winRate = battles > 0 ? Math.round((wins / battles) * 100) : 0
-
-          return (
-            <div
-              key={tank.agent_id}
-              className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700"
-            >
-              {/* 段位色条 */}
-              <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: tier.color }} />
-
-              {/* 右上角 ⋯ 菜单 */}
-              <div className="absolute right-3 top-3 z-10">
-                <button
-                  onClick={() => setMenuOpen(menuOpen === tank.agent_id ? null : tank.agent_id)}
-                  className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
-                >
-                  <MoreHorizontal className="size-4" />
-                </button>
-                {menuOpen === tank.agent_id && (
-                  <div className="absolute right-0 top-9 min-w-[140px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
-                    <button
-                      onClick={() => { router.push(`/tanks/${tank.agent_id}`); setMenuOpen(null) }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800"
-                    >
-                      <Pencil className="size-3.5" /> 编辑代码
-                    </button>
-                    <button
-                      onClick={() => { setDeleteTarget({ id: tank.agent_id, name: tank.agent_name }); setMenuOpen(null) }}
-                      disabled={deletingId === tank.agent_id}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-red-400 hover:bg-zinc-800 disabled:opacity-40"
-                    >
-                      {deletingId === tank.agent_id ? (
-                        <><Loader2 className="size-3.5 animate-spin" /> 删除中…</>
-                      ) : (
-                        <><Trash2 className="size-3.5" /> 删除</>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 主信息区 */}
-              <div className="flex gap-5 p-5 pl-6">
-                <TankAvatar name={tank.agent_name} skin={tank.skin} />
-                <div className="flex flex-1 flex-col justify-center gap-1.5 min-w-0 pr-10">
-                  <h3 className="truncate text-xl font-bold text-white">{tank.agent_name}</h3>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border ${tier.border} px-2 py-0.5 text-xs font-semibold`}
-                      style={{ color: tier.color }}
-                    >
-                      <Shield className="size-3" /> {tier.label}
-                    </span>
-                    <span className="text-zinc-600">·</span>
-                    <span className="font-mono text-zinc-300">Elo {elo}</span>
-                  </div>
-                  <p className="text-xs text-zinc-500">
-                    {battles === 0
-                      ? "暂无对战 · 去竞技场打第一场吧"
-                      : `${wins} 胜 ${losses} 负 · 胜率 ${winRate}%`}
-                  </p>
-                </div>
-              </div>
-
-              {/* 底部操作区 */}
-              <div className="flex items-center gap-2 border-t border-zinc-800 bg-zinc-950/40 px-5 py-3">
-                <button
-                  onClick={() => router.push(`/tanks/${tank.agent_id}`)}
-                  className="rounded-md border border-zinc-700 px-4 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
-                >
-                  详情
-                </button>
-                <button
-                  onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
-                >
-                  <Swords className="size-4" /> 立即对战
-                </button>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </main>
-
-    <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>删除坦克「{deleteTarget?.name}」？</AlertDialogTitle>
-          <AlertDialogDescription>
-            该坦克的全部历史版本、皮肤、Elo 与绑定密钥都会被清除（对战记录会保留）。此操作不可撤销。
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={confirmDelete}
-            className="bg-red-600 hover:bg-red-500 focus-visible:ring-red-600"
-          >
-            确认删除
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    </AnimatePresence>
     </>
   )
 }
