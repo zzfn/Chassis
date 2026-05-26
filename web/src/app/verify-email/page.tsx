@@ -16,7 +16,7 @@ function Content() {
   const [errMsg, setErrMsg] = useState("")
 
   useEffect(() => {
-    if (!token) { setStatus("error"); setErrMsg("无效的验证链接"); return }
+    if (!token) { setStatus("error"); setErrMsg("链接中缺少验证码，请检查邮件中的链接是否完整"); return }
     fetch(`${apiBase}/api/verify-email?token=${encodeURIComponent(token)}`)
       .then(async r => {
         const data = await r.json().catch(() => ({}))
@@ -27,7 +27,10 @@ function Content() {
         setTimeout(() => router.push("/tanks?new=1"), 2000)
       })
       .catch(e => {
-        setErrMsg(e instanceof Error ? e.message : "验证失败")
+        const msg = e instanceof Error ? e.message : "验证失败"
+        // 网络错误时给出更具体的提示
+        const isNetworkErr = msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror")
+        setErrMsg(isNetworkErr ? "无法连接到服务器，请稍后重试" : msg)
         setStatus("error")
       })
   }, [token, router])
