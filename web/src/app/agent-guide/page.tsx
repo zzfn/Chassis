@@ -110,6 +110,10 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
         <Pre>{`enemy = {
   tank:   { position: [col, row], direction: "west", hp: 75 },
   bullet: null,  // 敌人子弹：{ position:[col,row], direction:"west" } 或 null
+  skill: {
+    type:                    "freeze", // 敌方装备的技能名
+    remainingCooldownFrames: 12,       // 剩余冷却帧数；0 = 敌方可随时激活
+  },
   status: {
     frozen:  false, // 被冻结中（无法行动）
     stunned: false, // 被眩晕中（随机行动）
@@ -256,20 +260,43 @@ function onIdle(me, enemy, game) {
             </tbody>
           </table>
         </div>
-        <Pre>{`// 推荐模式：检测冷却后立即激活
-if (me.skill.remainingCooldownFrames === 0) {
-  var sk = me.skill.type;
-  if      (sk === "shield")   me.shield();
-  else if (sk === "freeze")   me.freeze();
-  else if (sk === "stun")     me.stun();
-  else if (sk === "overload") me.overload();
-  else if (sk === "cloak")    me.cloak();
-  else if (sk === "poison")   me.poison();
-  else if (sk === "boost")    me.boost();
-  else if (sk === "teleport") {
-    // 传送到安全格（远离敌人）
-    if (enemy) me.teleport(me.tank.position[0], 1);
+        <Pre>{`// 基础模式：冷却就激活
+function onIdle(me, enemy, game) {
+  if (me.skill.remainingCooldownFrames === 0) {
+    var sk = me.skill.type;
+    if      (sk === "shield")   me.shield();
+    else if (sk === "freeze")   me.freeze();
+    else if (sk === "stun")     me.stun();
+    else if (sk === "overload") me.overload();
+    else if (sk === "cloak")    me.cloak();
+    else if (sk === "poison")   me.poison();
+    else if (sk === "boost")    me.boost();
+    else if (sk === "teleport" && enemy) {
+      // 传送到远离敌人的角落
+      var ex = enemy.tank.position[0], ey = enemy.tank.position[1];
+      var tx = ex < 10 ? 18 : 1;
+      var ty = ey < 10 ? 18 : 1;
+      me.teleport(tx, ty);
+    }
   }
+  me.go(); me.fire();
+}
+
+// 进阶：利用敌方技能信息做反制
+function onIdle(me, enemy, game) {
+  if (enemy && me.skill.remainingCooldownFrames === 0) {
+    var sk = me.skill.type;
+    // 敌方 freeze 即将冷却好 → 提前护盾
+    if (sk === "shield" && enemy.skill.type === "freeze"
+        && enemy.skill.remainingCooldownFrames <= 3) {
+      me.shield();
+    }
+    // 敌方无冷却 → 先下手眩晕
+    if (sk === "stun" && enemy.skill.remainingCooldownFrames === 0) {
+      me.stun();
+    }
+  }
+  me.go(); me.fire();
 }`}</Pre>
       </Section>
 
@@ -292,7 +319,11 @@ if (me.skill.remainingCooldownFrames === 0) {
 #   "tank": {
 #     "name": "my_tank", "id": "uuid",
 #     "elo": 1042, "pvp_wins": 5, "pvp_losses": 3, "pvp_battles": 8, "win_rate": 0.625,
-#     "rankTier": "silver", "rankScore": 1042, "rankDivision": 2, "rankPoints": 42
+#     "rankTier": "silver", "rankScore": 1042, "rankDivision": 2, "rankPoints": 42,
+#     "skill": {
+#       "id": "shield", "description": "激活护盾吸收首发子弹",
+#       "cooldown": 32, "duration": 3
+#     }
 #   },
 #   "code": "function onIdle(...) { ... }",
 #   "current_version": 3,   // 当前已保存版本号
