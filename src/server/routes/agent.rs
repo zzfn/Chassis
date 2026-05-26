@@ -417,14 +417,14 @@ async fn agent_challenge(
 #[derive(Deserialize)]
 struct AgentSimulateRequest {
     code: Option<String>,
-    /// 兼容旧字段，忽略
-    #[allow(dead_code)]
-    bot: Option<String>,
-    #[allow(dead_code)]
+    #[serde(rename = "randomOpponent")]
+    random_opponent: Option<bool>,
     #[serde(rename = "opponentId")]
     opponent_id: Option<String>,
     #[serde(rename = "mapId")]
     _map_id: Option<String>,
+    #[allow(dead_code)]
+    bot: Option<String>,
 }
 
 async fn agent_simulate(
@@ -446,8 +446,27 @@ async fn agent_simulate(
         }
     };
     let name = auth.agent_name.clone();
-    let mirror = format!("{}_mirror", name);
-    let code2 = code.clone();
+
+    // 确定对手：随机真实玩家 / 指定 ID / 自我镜像
+    let (op_name, op_code) = if req.random_opponent == Some(true) {
+        match db::get_random_opponent(pool, auth.user_id, &auth.agent_name).await {
+            Ok(Some(o)) => (o.name, o.code),
+            Ok(None)    => return json_err(404, "暂无其他玩家"),
+            Err(e)      => return json_err(500, &e.to_string()),
+        }
+    } else if let Some(id_str) = req.opponent_id {
+        let Ok(agent_id) = id_str.parse::<uuid::Uuid>() else {
+            return json_err(400, "opponentId 格式无效");
+        };
+        match db::get_agent_by_id(pool, agent_id).await {
+            Ok(Some(o)) => (o.name, o.code),
+            Ok(None)    => return json_err(404, "对手坦克不存在"),
+            Err(e)      => return json_err(500, &e.to_string()),
+        }
+    } else {
+        (format!("{}_mirror", name), code.clone())
+    };
+
     let _permit = match tokio::time::timeout(
         std::time::Duration::from_secs(15),
         state.battle_sem.acquire(),
@@ -457,8 +476,8 @@ async fn agent_simulate(
     };
     let result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
         let owned = vec![
-            (name.as_str(), code.as_str(), SkillType::Shield),
-            (mirror.as_str(), code2.as_str(), SkillType::Shield),
+            (name.as_str(),    code.as_str(),    SkillType::Shield),
+            (op_name.as_str(), op_code.as_str(), SkillType::Shield),
         ];
         let engine = ArenaEngine::new(owned)?;
         Ok(engine.run())
