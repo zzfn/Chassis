@@ -3,4 +3,5 @@ pub(crate) mod admin;
 pub(crate) mod auth;
 pub(crate) mod battle;
 pub(crate) mod play;
+pub(crate) mod snake;
 pub(crate) mod tank;

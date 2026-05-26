@@ -367,6 +367,7 @@ pub async fn serve(port: u16) {
         .merge(routes::agent::router())
         .merge(routes::admin::router())
         .merge(routes::play::router())
+        .merge(routes::snake::router())
         .with_state(state)
         .layer(cors);
 

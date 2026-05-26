@@ -8,6 +8,7 @@
 mod physics;
 mod battle;
 mod sandbox;
+mod snake;
 mod server;
 mod db;
 mod auth;
