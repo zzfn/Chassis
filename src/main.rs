@@ -9,6 +9,7 @@ mod physics;
 mod battle;
 mod sandbox;
 mod snake;
+mod bomberman;
 mod server;
 mod db;
 mod auth;

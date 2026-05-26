@@ -5,3 +5,4 @@ pub(crate) mod battle;
 pub(crate) mod play;
 pub(crate) mod snake;
 pub(crate) mod tank;
+pub(crate) mod bomberman;

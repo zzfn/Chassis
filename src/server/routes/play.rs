@@ -450,7 +450,7 @@ fn run_game_loop(
                 shielded:     t.status.shielded   > 0,
                 frozen:       t.status.frozen     > 0,
                 stunned:      t.status.stunned    > 0,
-                overloaded:   t.status.overloaded,
+                overloaded:   t.status.overloaded  > 0,
                 cloaked:      t.status.cloaked    > 0,
                 poisoned:     t.status.poisoned   > 0,
                 boosted:      t.status.boosted    > 0,

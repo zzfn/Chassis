@@ -12,6 +12,65 @@ use crate::server::{
     AppState, json_err, resolve_api_key, period_since,
 };
 
+fn skill_info(skill: &str) -> serde_json::Value {
+    match skill {
+        "shield" => serde_json::json!({
+            "id": "shield",
+            "description": "激活护盾，持续 3 回合内免疫子弹伤害",
+            "cooldown": 32,
+            "duration": 3,
+        }),
+        "freeze" => serde_json::json!({
+            "id": "freeze",
+            "description": "冻结最近的敌方坦克，使其无法行动 2 回合",
+            "cooldown": 34,
+            "duration": 2,
+        }),
+        "stun" => serde_json::json!({
+            "id": "stun",
+            "description": "眩晕最近的敌方坦克，使其无法行动 6 回合",
+            "cooldown": 31,
+            "duration": 6,
+        }),
+        "overload" => serde_json::json!({
+            "id": "overload",
+            "description": "下次开火时同时射出两发子弹，造成双倍伤害",
+            "cooldown": 32,
+            "duration": 1,
+        }),
+        "cloak" => serde_json::json!({
+            "id": "cloak",
+            "description": "进入隐身状态 8 回合，敌方无法感知你的位置",
+            "cooldown": 32,
+            "duration": 8,
+        }),
+        "poison" => serde_json::json!({
+            "id": "poison",
+            "description": "使最近的敌方坦克中毒 4 回合，行动效率降低（交替跳帧）",
+            "cooldown": 34,
+            "duration": 4,
+        }),
+        "teleport" => serde_json::json!({
+            "id": "teleport",
+            "description": "瞬间传送至指定坐标，若落点邻近敌人则锁定射击 2 回合",
+            "cooldown": 40,
+            "duration": null,
+        }),
+        "boost" => serde_json::json!({
+            "id": "boost",
+            "description": "激活加速，持续 6 回合内每次移动前进 2 格",
+            "cooldown": 31,
+            "duration": 6,
+        }),
+        _ => serde_json::json!({
+            "id": skill,
+            "description": null,
+            "cooldown": null,
+            "duration": null,
+        }),
+    }
+}
+
 fn elo_to_rank(elo: f64) -> (&'static str, u8, u8) {
     // tier 边界：bronze<1100, silver<1300, gold<1500, platinum<1800, diamond>=1800
     let (tier, tier_min, tier_max): (&str, f64, f64) = if elo < 1100.0 {
@@ -46,9 +105,9 @@ async fn agent_tank_context(
         Ok(a)  => a,
         Err(e) => return json_err(500, &e.to_string()),
     };
-    let (code, agent_id) = match agent {
-        Some(ref a) => (Some(a.code.clone()), Some(a.id)),
-        None        => (None, None),
+    let (code, agent_id, skill_type) = match agent {
+        Some(ref a) => (Some(a.code.clone()), Some(a.id), a.skill_type.clone()),
+        None        => (None, None, "shield".to_string()),
     };
 
     // 当前已提交版本数（下一次提交将是 current_version + 1）
@@ -96,6 +155,7 @@ async fn agent_tank_context(
             "rankTier": rank_tier,
             "rankDivision": rank_division,
             "rankPoints": rank_points,
+            "skill": skill_info(&skill_type),
         },
         "code": code,
         "current_version": current_version,

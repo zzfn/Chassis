@@ -212,6 +212,11 @@ impl QuickJsSandbox {
                 enemy_status.set("stunned", e.status.stunned).map_err(|e| e.to_string())?;
                 enemy_status.set("poisoned",e.status.poisoned).map_err(|e| e.to_string())?;
                 enemy_obj.set("status", enemy_status).map_err(|e| e.to_string())?;
+                // ── enemy.skill ──────────────────────────────────────────────
+                let enemy_skill = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
+                enemy_skill.set("type", e.skill_type.as_str()).map_err(|e| e.to_string())?;
+                enemy_skill.set("remainingCooldownFrames", e.skill_cooldown as i32).map_err(|e| e.to_string())?;
+                enemy_obj.set("skill", enemy_skill).map_err(|e| e.to_string())?;
                 // ── 设置 enemy.bullet（敌人发出的第一颗活跃子弹）────────────
                 let enemy_bullet = sensors.bullets.iter().find(|b| b.owner_id == e.id);
                 if let Some(b) = enemy_bullet {

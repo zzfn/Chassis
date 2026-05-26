@@ -195,7 +195,7 @@ const TILE   = 40
 const VIEW   = 560
 const S      = VIEW / WORLD   // 0.7
 const TS     = TILE * S       // 28px on screen
-const MS_PER_TICK = 150
+const MS_PER_TICK = 200
 
 const PALETTE = [
   { body: 0x3b82f6, dark: 0x1e3a8a },

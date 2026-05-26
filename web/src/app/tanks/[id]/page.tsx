@@ -93,6 +93,7 @@ const AI_ICONS: Record<string, React.ReactNode> = {
   GPT:     <img src="/ai-icons/gpt.ico"     width={14} height={14} className="inline-block rounded-sm" alt="GPT" />,
   Copilot: <img src="/ai-icons/copilot.ico" width={14} height={14} className="inline-block rounded-sm" alt="Copilot" />,
   Gemini:  <img src="/ai-icons/gemini.ico"  width={14} height={14} className="inline-block rounded-sm" alt="Gemini" />,
+  Cursor:  <img src="/ai-icons/cursor.ico"  width={14} height={14} className="inline-block rounded-sm" alt="Cursor" />,
   Other: "🤖",
 }
 
@@ -913,7 +914,7 @@ ${guideUrl}
    用草稿代码做镜像自战（不计入战绩，用于验证代码不崩溃、基本逻辑正确）。
    body: { "code": "..." }
 4. POST ${apiBase}/api/agent/tank/code
-   发布新版本。body: { "code": "...", "notes": "改动说明", "submittedBy": "Claude" }
+   发布新版本。body: { "code": "...", "notes": "改动说明", "submittedBy": "Claude | ChatGPT | Gemini | DeepSeek | Qwen | Grok | Cursor | Copilot" }
 5. POST ${apiBase}/api/agent/tank/challenge
    挑战其他玩家坦克，战绩计入排行榜。body: { "randomOpponent": true }
    或指定对手：body: { "opponentTankId": "<agent_id>" }

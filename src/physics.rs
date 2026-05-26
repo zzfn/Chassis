@@ -148,12 +148,12 @@ impl SkillType {
     pub fn cooldown_max(&self) -> u32 {
         match self {
             SkillType::Shield   => 32,
-            SkillType::Freeze   => 32, // 32(原34)：效果大幅增强，CD 同步缩短
-            SkillType::Stun     => 33, // 33(原31)：最强控制，微加 CD
+            SkillType::Freeze   => 34,
+            SkillType::Stun     => 31,
             SkillType::Overload => 32,
-            SkillType::Cloak    => 36, // 36(原32)：7帧隐身效果强，CD 拉长
-            SkillType::Poison   => 30, // 30(原34)：效果增强，CD 同步缩短
-            SkillType::Teleport => 35, // 35(原40)：降低门槛
+            SkillType::Cloak    => 32,
+            SkillType::Poison   => 34,
+            SkillType::Teleport => 40,
             SkillType::Boost    => 31,
         }
     }
@@ -189,7 +189,7 @@ pub struct TankStatus {
     pub shielded:    u32,   // 剩余帧数：护盾
     pub frozen:      u32,   // 剩余帧数：冻结（跳过命令出队）
     pub stunned:     u32,   // 剩余帧数：眩晕（随机化命令）
-    pub overloaded:  bool,  // 直到下次开火
+    pub overloaded:  u32,   // 剩余帧数：过载（>0 时下次开火双射）
     pub cloaked:     u32,   // 剩余帧数：隐身（敌人传感器不可见）
     pub poisoned:    u32,   // 剩余帧数：中毒（每隔一帧跳过命令）
     pub boosted:     u32,   // 剩余帧数：加速（移动 2 格）
@@ -204,6 +204,7 @@ impl TankStatus {
         if self.stunned     > 0 { self.stunned     -= 1; }
         if self.cloaked     > 0 { self.cloaked     -= 1; }
         if self.boosted     > 0 { self.boosted     -= 1; }
+        if self.overloaded  > 0 { self.overloaded  -= 1; }
         if self.fire_locked > 0 { self.fire_locked -= 1; }
         if self.poisoned    > 0 {
             self.poisoned    -= 1;
@@ -292,7 +293,7 @@ impl TankState {
                 shielded:    self.status.shielded    > 0,
                 frozen:      self.status.frozen      > 0,
                 stunned:     self.status.stunned     > 0,
-                overloaded:  self.status.overloaded,
+                overloaded:  self.status.overloaded  > 0,
                 cloaked:     self.status.cloaked     > 0,
                 poisoned:    self.status.poisoned    > 0,
                 boosted:     self.status.boosted     > 0,
@@ -344,6 +345,8 @@ pub struct EnemySensor {
     pub facing: Facing,
     pub hp: i32,
     pub status: TankStatusSummary,
+    pub skill_type: SkillType,
+    pub skill_cooldown: u32,
 }
 
 #[derive(Clone)]
@@ -434,7 +437,7 @@ pub fn compute_sensors(
         .filter(|t| t.alive && t.team_id != me.team_id
                    && map[t.y][t.x] != Tile::Grass
                    && !t.status.cloaked)
-        .map(|t| EnemySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp, status: t.status.clone() })
+        .map(|t| EnemySensor { id: t.id, x: t.x, y: t.y, facing: t.facing, hp: t.hp, status: t.status.clone(), skill_type: t.skill_type.clone(), skill_cooldown: t.skill_cooldown })
         .collect();
     // 按曼哈顿距离排序
     enemies.sort_by_key(|e| {

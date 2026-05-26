@@ -237,6 +237,10 @@ impl ArenaEngine {
                 .map(|(i, _)| i)
                 .collect();
             for i in stunned_indices {
+                // 原命令推回队首，不丢失
+                if let Some(original) = this_turn_cmds[i].take() {
+                    self.agents[i].0.command_queue.push_front(original);
+                }
                 let r = (self.next_rand() * 3.0) as u32;
                 this_turn_cmds[i] = Some(match r {
                     0 => TankCommand::Move,
@@ -277,32 +281,32 @@ impl ArenaEngine {
                     }
                     SkillType::Freeze => {
                         if let Some(eid) = nearest_enemy_id {
-                            self.agents[eid].0.status.frozen = 6; // 有效 5 帧跳过（原 2→1 帧）
+                            self.agents[eid].0.status.frozen = 3; // 有效 2 帧
                             battle_log.push(format!("[Turn {:04}] {} 冻结了 {}！", turn, self.agents[i].0.name, self.agents[eid].0.name));
                         }
                     }
                     SkillType::Stun => {
                         if let Some(eid) = nearest_enemy_id {
-                            self.agents[eid].0.status.stunned = 6;
+                            self.agents[eid].0.status.stunned = 7; // 有效 6 帧
                             battle_log.push(format!("[Turn {:04}] {} 眩晕了 {}！", turn, self.agents[i].0.name, self.agents[eid].0.name));
                         }
                     }
                     SkillType::Overload => {
-                        self.agents[i].0.status.overloaded = true;
+                        self.agents[i].0.status.overloaded = 11; // 有效 10 帧
                         battle_log.push(format!("[Turn {:04}] {} 激活过载！", turn, self.agents[i].0.name));
                     }
                     SkillType::Cloak => {
-                        self.agents[i].0.status.cloaked = 7; // 有效 6 帧（原 8→7 帧）
+                        self.agents[i].0.status.cloaked = 9; // 有效 8 帧
                         battle_log.push(format!("[Turn {:04}] {} 进入隐身状态！", turn, self.agents[i].0.name));
                     }
                     SkillType::Poison => {
                         if let Some(eid) = nearest_enemy_id {
-                            self.agents[eid].0.status.poisoned = 8; // 8帧内 4 次实际跳过（原 4帧/2次）
+                            self.agents[eid].0.status.poisoned = 5; // 有效 4 帧（交替跳帧，共 2 次实际跳过）
                             battle_log.push(format!("[Turn {:04}] {} 使 {} 中毒！", turn, self.agents[i].0.name, self.agents[eid].0.name));
                         }
                     }
                     SkillType::Teleport => {
-                        if let Some((tx, ty)) = coords {
+                        let success = if let Some((tx, ty)) = coords {
                             let passable = tx < physics::GRID_W && ty < physics::GRID_H
                                 && self.map[ty][tx].is_passable()
                                 && !self.agents.iter().any(|(t, _)| t.alive && t.id != i && t.x == tx && t.y == ty);
@@ -311,18 +315,22 @@ impl ArenaEngine {
                                 self.agents[i].0.y = ty;
                                 let tank_name = self.agents[i].0.name.clone();
                                 battle_log.push(format!("[Turn {:04}] {} 传送至 ({},{})！", turn, tank_name, tx, ty));
-                                // 若传送后距敌人曼哈顿距离 ≤ 4，则锁定射击 2 帧
                                 let near_enemy = summaries.iter()
                                     .any(|s| s.alive && s.team_id != self.agents[i].0.team_id
                                         && (s.x as i32 - tx as i32).unsigned_abs() + (s.y as i32 - ty as i32).unsigned_abs() <= 4);
                                 if near_enemy {
                                     self.agents[i].0.status.fire_locked = 2;
                                 }
-                            }
+                                true
+                            } else { false }
+                        } else { false };
+                        // 传送失败退还 CD
+                        if !success {
+                            self.agents[i].0.skill_cooldown = 0;
                         }
                     }
                     SkillType::Boost => {
-                        self.agents[i].0.status.boosted = 6;
+                        self.agents[i].0.status.boosted = 7; // 有效 6 帧
                         battle_log.push(format!("[Turn {:04}] {} 激活加速！", turn, self.agents[i].0.name));
                     }
                 }
@@ -392,8 +400,8 @@ impl ArenaEngine {
                     && tank.status.fire_locked == 0  // 传送锁定期间不能射击
                 {
                     tank.shoot_cooldown = 1; // 子弹在飞，禁止再射
-                    let is_overloaded = tank.status.overloaded;
-                    if is_overloaded { tank.status.overloaded = false; }
+                    let is_overloaded = tank.status.overloaded > 0;
+                    if is_overloaded { tank.status.overloaded = 0; }
 
                     new_bullets.push(physics::Bullet {
                         id: self.next_bullet_id,
@@ -529,7 +537,7 @@ impl ArenaEngine {
                     shielded:   t.status.shielded   > 0,
                     frozen:     t.status.frozen     > 0,
                     stunned:    t.status.stunned    > 0,
-                    overloaded: t.status.overloaded,
+                    overloaded: t.status.overloaded  > 0,
                     cloaked:    t.status.cloaked    > 0,
                     poisoned:   t.status.poisoned   > 0,
                     boosted:    t.status.boosted    > 0,
@@ -571,17 +579,26 @@ impl ArenaEngine {
                         winner_label = format!("{} (同归于尽·最高分)", t.name);
                         winner_team  = None;
                     } else {
-                        // 分数相同，取 JS 耗时最短者
-                        let best = top.iter().min_by_key(|(_, us)| us).unwrap();
-                        let all_same = top.iter().all(|(_, us)| *us == best.1);
-                        if all_same {
-                            winner       = "无".into();
-                            winner_label = "平局 (同归于尽·分数与效率均相同)".into();
-                            winner_team  = None;
-                        } else {
-                            let t = &self.agents[best.0].0;
+                        // 分数相同：先比错误数，再比平均耗时，均一致才平局
+                        let top_with_stats: Vec<(usize, u32, u64)> = self.agents.iter().enumerate()
+                            .filter(|(_, (t, _))| t.score == max_score)
+                            .map(|(i, (_, sb))| {
+                                let s = sb.stats();
+                                (i, s.error_count, s.avg_exec_us)
+                            })
+                            .collect();
+                        let min_err = top_with_stats.iter().map(|(_, e, _)| *e).min().unwrap();
+                        let after_err: Vec<_> = top_with_stats.iter().filter(|(_, e, _)| *e == min_err).collect();
+                        let min_us = after_err.iter().map(|(_, _, us)| *us).min().unwrap();
+                        let finalists: Vec<_> = after_err.iter().filter(|(_, _, us)| *us == min_us).collect();
+                        if finalists.len() == 1 {
+                            let t = &self.agents[finalists[0].0].0;
                             winner       = t.name.clone();
                             winner_label = format!("{} (同归于尽·JS效率更高)", t.name);
+                            winner_team  = None;
+                        } else {
+                            winner       = "无".into();
+                            winner_label = "平局 (同归于尽·分数与效率均相同)".into();
                             winner_team  = None;
                         }
                     }

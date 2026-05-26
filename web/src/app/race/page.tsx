@@ -251,7 +251,7 @@ function RaceContent() {
                     className="flex items-center gap-2.5"
                   >
                     <Loader2 className="size-4 animate-spin" />
-                    MATCHING...
+                    匹配中...
                   </motion.span>
                 ) : (
                   <motion.span
@@ -262,7 +262,7 @@ function RaceContent() {
                     className="flex items-center gap-2.5"
                   >
                     <Zap className="size-4" />
-                    ENGAGE
+                    开战
                   </motion.span>
                 )}
               </AnimatePresence>

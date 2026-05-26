@@ -783,6 +783,41 @@ pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(pool).await?;
     sqlx::query("ALTER TABLE elo_ratings ADD COLUMN IF NOT EXISTS volatility DOUBLE PRECISION NOT NULL DEFAULT 0.06")
         .execute(pool).await?;
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS snake_agents (
+            id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name       TEXT        NOT NULL,
+            code       TEXT        NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(pool).await?;
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS snake_battles (
+            id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            challenger_id UUID,
+            opponent_id   UUID,
+            agent_name    TEXT        NOT NULL,
+            opponent      TEXT        NOT NULL,
+            winner        TEXT        NOT NULL,
+            total_ticks   INT         NOT NULL,
+            arena         JSONB       NOT NULL,
+            telemetry     JSONB       NOT NULL,
+            battle_log    JSONB       NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#).execute(pool).await?;
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS snake_elo_ratings (
+            user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            agent_name TEXT NOT NULL,
+            elo        DOUBLE PRECISION NOT NULL DEFAULT 1500,
+            rd         DOUBLE PRECISION NOT NULL DEFAULT 350,
+            volatility DOUBLE PRECISION NOT NULL DEFAULT 0.06,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, agent_name)
+        )
+    "#).execute(pool).await?;
     Ok(())
 }
 
@@ -1004,6 +1039,9 @@ pub async fn get_random_agents(pool: &PgPool, exclude_user_id: Uuid, count: i64)
 
 // 按 ELO 距离最近匹配对手（每个用户取最新提交的 agent）
 pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
+    // 匹配优先级：① 近24h对战次数少的对手（避免反复刷同一人）
+    //             ② ELO 距离近的对手（公平匹配）
+    //             ③ 随机打破平局
     let row = sqlx::query(r#"
         SELECT id, user_id, name, code, skill_type FROM (
             SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code, a.skill_type
@@ -1011,10 +1049,19 @@ pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_nam
             WHERE a.user_id != $1
             ORDER BY a.user_id, a.created_at DESC
         ) latest
-        ORDER BY ABS(
-            COALESCE((SELECT elo FROM elo_ratings WHERE user_id = latest.user_id AND agent_name = latest.name), 1000.0)
-            - COALESCE((SELECT elo FROM elo_ratings WHERE user_id = $1   AND agent_name = $2),                  1000.0)
-        ), RANDOM()
+        ORDER BY
+            (SELECT COUNT(*) FROM battles
+             WHERE created_at > NOW() - INTERVAL '24 hours'
+               AND (
+                 (challenger_id = $1 AND opponent_id = latest.user_id) OR
+                 (opponent_id   = $1 AND challenger_id = latest.user_id)
+               )
+            ),
+            ABS(
+                COALESCE((SELECT elo FROM elo_ratings WHERE user_id = latest.user_id AND agent_name = latest.name), 1000.0)
+                - COALESCE((SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2), 1000.0)
+            ),
+            RANDOM()
         LIMIT 1
     "#)
     .bind(exclude_user_id)
@@ -1181,10 +1228,10 @@ impl Glicko2 {
         let v  = 1.0 / (g * g * e * (1.0 - e));
         let delta = v * g * (score - e);
 
-        // Illinois 算法求新波动率 σ'
-        let a = self.volatility.ln();
+        // Illinois 算法求新波动率 σ'（Glickman 2012，x = ln(σ²)）
+        let a = self.volatility.powi(2).ln(); // a = ln(σ²)
         let f = |x: f64| -> f64 {
-            let ex  = x.exp();
+            let ex  = x.exp(); // e^x = σ²
             let top = ex * (delta * delta - phi * phi - v - ex);
             let bot = 2.0 * (phi * phi + v + ex).powi(2);
             top / bot - (x - a) / (GLICKO_TAU * GLICKO_TAU)
@@ -1204,7 +1251,7 @@ impl Glicko2 {
             if fc * fb <= 0.0 { big_a = big_b; fa = fb; } else { fa /= 2.0; }
             big_b = big_c; fb = fc;
         }
-        let new_vol = big_a.exp(); // a = ln(σ)，故 σ' = e^A（非 e^(A/2)）
+        let new_vol = (big_a / 2.0).exp(); // A = ln(σ'²)，故 σ' = e^(A/2)
 
         let phi_star = (phi * phi + new_vol * new_vol).sqrt();
         let new_phi  = 1.0 / (1.0 / (phi_star * phi_star) + 1.0 / v).sqrt();
@@ -1226,6 +1273,23 @@ async fn upsert_elo(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(r#"
         INSERT INTO elo_ratings (user_id, agent_name, elo, rd, volatility, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (user_id, agent_name) DO UPDATE
+            SET elo = EXCLUDED.elo, rd = EXCLUDED.rd, volatility = EXCLUDED.volatility, updated_at = NOW()
+    "#)
+    .bind(user_id).bind(agent_name).bind(g.rating).bind(g.rd).bind(g.volatility)
+    .execute(&mut **tx).await?;
+    Ok(())
+}
+
+async fn upsert_snake_elo(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    agent_name: &str,
+    g: &Glicko2,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"
+        INSERT INTO snake_elo_ratings (user_id, agent_name, elo, rd, volatility, updated_at)
         VALUES ($1, $2, $3, $4, $5, NOW())
         ON CONFLICT (user_id, agent_name) DO UPDATE
             SET elo = EXCLUDED.elo, rd = EXCLUDED.rd, volatility = EXCLUDED.volatility, updated_at = NOW()
@@ -1294,24 +1358,13 @@ pub async fn save_pvp_battle(
         "SELECT elo, rd, volatility FROM elo_ratings WHERE user_id = $1 AND agent_name = $2 FOR UPDATE"
     ).bind(opponent_id).bind(opponent_name).fetch_optional(&mut *tx).await?);
 
+    // 胜负由 battle.rs 统一判定（含同归于尽的 JS 效率 tiebreaker），此处直接信任
     let (sa, sb) = if result.winner == challenger_name {
         (1.0_f64, 0.0_f64)
     } else if result.winner == opponent_name {
         (0.0_f64, 1.0_f64)
     } else {
-        // 双方同帧互杀（"无"）：用 JS 执行效率决定胜负
-        // 指标：错误次数优先，其次平均执行耗时（越低越好）
-        let stat = |name: &str| result.js_stats.iter().find(|s| s.tank_name == name);
-        let score_of = |name: &str| -> (u32, u64) {
-            stat(name).map(|s| (s.error_count, s.avg_exec_us)).unwrap_or((u32::MAX, u64::MAX))
-        };
-        let ca = score_of(challenger_name);
-        let cb = score_of(opponent_name);
-        match ca.cmp(&cb) {
-            std::cmp::Ordering::Less    => (1.0, 0.0), // 挑战方效率更好
-            std::cmp::Ordering::Greater => (0.0, 1.0), // 对手效率更好
-            std::cmp::Ordering::Equal   => (0.5, 0.5), // 完全一致才平局
-        }
+        (0.5_f64, 0.5_f64) // 真平局
     };
     let new_ga = ga.update(&gb, sa);
     let new_gb = gb.update(&ga, sb);
@@ -1743,4 +1796,375 @@ pub async fn consume_verification_token(
         email_verified: r.get("email_verified"),
         banned:         r.get("banned"),
     }))
+}
+
+// ── 贪吃蛇 Agent & Battle ─────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub struct SnakeAgentRow {
+    pub id:      Uuid,
+    pub user_id: Uuid,
+    pub name:    String,
+    pub code:    String,
+}
+
+fn row_to_snake_agent(r: &sqlx::postgres::PgRow) -> SnakeAgentRow {
+    use sqlx::Row;
+    SnakeAgentRow {
+        id:      r.get("id"),
+        user_id: r.get("user_id"),
+        name:    r.get("name"),
+        code:    r.get("code"),
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserSnakeEntry {
+    pub agent_id:    String,
+    pub agent_name:  String,
+    pub created_at:  DateTime<Utc>,
+    pub pvp_battles: i64,
+    pub pvp_wins:    i64,
+    pub pvp_losses:  i64,
+    pub version:     i64,
+    pub elo:         f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnakeBattleRecord {
+    pub id:          Uuid,
+    pub agent_name:  String,
+    pub opponent:    String,
+    pub winner:      String,
+    pub total_ticks: i32,
+    pub arena:       serde_json::Value,
+    pub telemetry:   serde_json::Value,
+    pub battle_log:  serde_json::Value,
+    pub created_at:  DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnakeMatchRecord {
+    pub id:          String,
+    pub challenger:  String,
+    pub opponent:    String,
+    pub winner:      String,
+    pub total_ticks: i32,
+    pub created_at:  DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnakePlayerEntry {
+    pub agent_id:    String,
+    pub agent_name:  String,
+    pub owner:       String,
+    pub pvp_battles: i64,
+    pub pvp_wins:    i64,
+    pub version:     i64,
+    pub elo:         f64,
+}
+
+pub async fn create_snake_agent(
+    pool: &PgPool,
+    user_id: Uuid,
+    name: &str,
+    code: &str,
+) -> Result<Uuid, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "INSERT INTO snake_agents (user_id, name, code) VALUES ($1,$2,$3) RETURNING id"
+    )
+    .bind(user_id).bind(name).bind(code)
+    .fetch_one(pool).await?;
+    Ok(row.get("id"))
+}
+
+pub async fn get_snake_agent_version(
+    pool: &PgPool,
+    user_id: Uuid,
+    name: &str,
+    id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS cnt FROM snake_agents WHERE user_id=$1 AND name=$2 AND id<=$3"
+    )
+    .bind(user_id).bind(name).bind(id)
+    .fetch_one(pool).await?;
+    Ok(row.get("cnt"))
+}
+
+pub async fn get_latest_snake_agent(
+    pool: &PgPool,
+    user_id: Uuid,
+    name: &str,
+) -> Result<Option<SnakeAgentRow>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id, user_id, name, code FROM snake_agents WHERE user_id=$1 AND name=$2 ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(user_id).bind(name)
+    .fetch_optional(pool).await?;
+    Ok(row.as_ref().map(row_to_snake_agent))
+}
+
+pub async fn get_snake_agent_by_id(
+    pool: &PgPool,
+    agent_id: Uuid,
+) -> Result<Option<SnakeAgentRow>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id, user_id, name, code FROM snake_agents WHERE id=$1"
+    )
+    .bind(agent_id)
+    .fetch_optional(pool).await?;
+    Ok(row.as_ref().map(row_to_snake_agent))
+}
+
+pub async fn get_user_snakes(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<UserSnakeEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT sub.agent_id, sub.agent_name, sub.created_at,
+               COUNT(b.id)                                           AS pvp_battles,
+               COUNT(b.id) FILTER (WHERE b.winner = sub.agent_name) AS pvp_wins,
+               COUNT(b.id) FILTER (WHERE b.winner != sub.agent_name) AS pvp_losses,
+               sub.version,
+               COALESCE(er.elo, 1500.0) AS elo
+        FROM (
+            SELECT DISTINCT ON (name)
+                id::text AS agent_id, name AS agent_name, created_at, user_id,
+                (SELECT COUNT(*) FROM snake_agents a2 WHERE a2.user_id=$1 AND a2.name=snake_agents.name) AS version
+            FROM snake_agents
+            WHERE user_id=$1
+            ORDER BY name, created_at DESC
+        ) sub
+        LEFT JOIN snake_battles b ON b.challenger_id IS NOT NULL AND (
+            (b.challenger_id=$1 AND b.agent_name=sub.agent_name)
+            OR (b.opponent_id=$1 AND b.opponent=sub.agent_name)
+        )
+        LEFT JOIN snake_elo_ratings er ON er.user_id = sub.user_id AND er.agent_name = sub.agent_name
+        GROUP BY sub.agent_id, sub.agent_name, sub.created_at, sub.version, er.elo
+        ORDER BY sub.created_at DESC
+    "#).bind(user_id).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| UserSnakeEntry {
+        agent_id:    r.get("agent_id"),
+        agent_name:  r.get("agent_name"),
+        created_at:  r.get("created_at"),
+        pvp_battles: r.get("pvp_battles"),
+        pvp_wins:    r.get("pvp_wins"),
+        pvp_losses:  r.get("pvp_losses"),
+        version:     r.get("version"),
+        elo:         r.get("elo"),
+    }).collect())
+}
+
+pub async fn get_random_snake_opponent(
+    pool: &PgPool,
+    exclude_user_id: Uuid,
+    my_agent_name: &str,
+) -> Result<Option<SnakeAgentRow>, sqlx::Error> {
+    // 匹配优先级：① 近24h对战次数少的对手（自然冷却，避免反复刷同一人）
+    //             ② ELO 距离近的对手（公平匹配）
+    //             ③ 随机打破平局
+    let row = sqlx::query(r#"
+        SELECT id, user_id, name, code FROM (
+            SELECT DISTINCT ON (sa.user_id) sa.id, sa.user_id, sa.name, sa.code
+            FROM snake_agents sa
+            WHERE sa.user_id != $1
+            ORDER BY sa.user_id, sa.created_at DESC
+        ) latest
+        ORDER BY
+            (SELECT COUNT(*) FROM snake_battles
+             WHERE created_at > NOW() - INTERVAL '24 hours'
+               AND (
+                 (challenger_id = $1 AND opponent_id = latest.user_id) OR
+                 (opponent_id   = $1 AND challenger_id = latest.user_id)
+               )
+            ),
+            ABS(
+                COALESCE((SELECT elo FROM snake_elo_ratings
+                          WHERE user_id = latest.user_id AND agent_name = latest.name), 1500.0)
+                - COALESCE((SELECT elo FROM snake_elo_ratings
+                            WHERE user_id = $1 AND agent_name = $2), 1500.0)
+            ),
+            RANDOM()
+        LIMIT 1
+    "#)
+    .bind(exclude_user_id)
+    .bind(my_agent_name)
+    .fetch_optional(pool).await?;
+    Ok(row.as_ref().map(row_to_snake_agent))
+}
+
+pub async fn save_snake_pvp_battle(
+    pool: &PgPool,
+    challenger_id: Uuid,
+    opponent_id: Uuid,
+    challenger_name: &str,
+    opponent_name: &str,
+    result: &crate::snake::SnakeResult,
+) -> Result<Uuid, sqlx::Error> {
+    let id              = Uuid::new_v4();
+    let arena_json      = serde_json::to_value(&result.arena).unwrap_or_default();
+    let telemetry_json  = serde_json::to_value(&result.telemetry).unwrap_or_default();
+    let battle_log_json = serde_json::to_value(&result.battle_log).unwrap_or_default();
+
+    // ── 使用事务保证 INSERT + 双方 Elo UPSERT 的原子性 ──────────────────────
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(r#"
+        INSERT INTO snake_battles
+        (id, challenger_id, opponent_id, agent_name, opponent, winner, total_ticks, arena, telemetry, battle_log)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    "#)
+    .bind(id)
+    .bind(challenger_id)
+    .bind(opponent_id)
+    .bind(challenger_name)
+    .bind(opponent_name)
+    .bind(&result.winner)
+    .bind(result.total_ticks as i32)
+    .bind(arena_json)
+    .bind(telemetry_json)
+    .bind(battle_log_json)
+    .execute(&mut *tx).await?;
+
+    // ── Glicko-2 更新 ─────────────────────────────────────────────────────────
+    use sqlx::Row as _;
+    let load_snake_glicko = |row: Option<sqlx::postgres::PgRow>| -> Glicko2 {
+        match row {
+            Some(r) => Glicko2 {
+                rating:     r.get("elo"),
+                rd:         r.get("rd"),
+                volatility: r.get("volatility"),
+            },
+            // 蛇 ELO 初始值为 1500，不同于坦克的 1000
+            None => Glicko2 { rating: 1500.0, rd: 350.0, volatility: 0.06 },
+        }
+    };
+
+    // FOR UPDATE：锁定行，防止并发对战覆盖彼此的 Glicko 更新
+    let ga = load_snake_glicko(sqlx::query(
+        "SELECT elo, rd, volatility FROM snake_elo_ratings WHERE user_id = $1 AND agent_name = $2 FOR UPDATE"
+    ).bind(challenger_id).bind(challenger_name).fetch_optional(&mut *tx).await?);
+
+    let gb = load_snake_glicko(sqlx::query(
+        "SELECT elo, rd, volatility FROM snake_elo_ratings WHERE user_id = $1 AND agent_name = $2 FOR UPDATE"
+    ).bind(opponent_id).bind(opponent_name).fetch_optional(&mut *tx).await?);
+
+    let (sa, sb) = if result.winner == challenger_name {
+        (1.0_f64, 0.0_f64)
+    } else if result.winner == opponent_name {
+        (0.0_f64, 1.0_f64)
+    } else {
+        (0.5_f64, 0.5_f64)
+    };
+    let new_ga = ga.update(&gb, sa);
+    let new_gb = gb.update(&ga, sb);
+
+    upsert_snake_elo(&mut tx, challenger_id, challenger_name, &new_ga).await?;
+    upsert_snake_elo(&mut tx, opponent_id,   opponent_name,   &new_gb).await?;
+
+    tx.commit().await?;
+
+    Ok(id)
+}
+
+pub async fn get_snake_battle(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Option<SnakeBattleRecord>, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT id, agent_name, opponent, winner, total_ticks, arena, telemetry, battle_log, created_at FROM snake_battles WHERE id=$1"
+    )
+    .bind(id)
+    .fetch_optional(pool).await?;
+    Ok(row.map(|r| SnakeBattleRecord {
+        id:          r.get("id"),
+        agent_name:  r.get("agent_name"),
+        opponent:    r.get("opponent"),
+        winner:      r.get("winner"),
+        total_ticks: r.get("total_ticks"),
+        arena:       r.get("arena"),
+        telemetry:   r.get("telemetry"),
+        battle_log:  r.get("battle_log"),
+        created_at:  r.get("created_at"),
+    }))
+}
+
+pub async fn get_snake_matches(
+    pool: &PgPool,
+    user_id: Uuid,
+    agent_name: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<SnakeMatchRecord>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT b.id::text, b.agent_name AS challenger, b.opponent, b.winner, b.total_ticks, b.created_at
+        FROM snake_battles b
+        WHERE b.challenger_id IS NOT NULL
+          AND ((b.challenger_id=$1 AND b.agent_name=$2) OR (b.opponent_id=$1 AND b.opponent=$2))
+        ORDER BY b.created_at DESC LIMIT $3 OFFSET $4
+    "#)
+    .bind(user_id).bind(agent_name).bind(limit).bind(offset)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| SnakeMatchRecord {
+        id:          r.get("id"),
+        challenger:  r.get("challenger"),
+        opponent:    r.get("opponent"),
+        winner:      r.get("winner"),
+        total_ticks: r.get("total_ticks"),
+        created_at:  r.get("created_at"),
+    }).collect())
+}
+
+pub async fn list_snake_players(pool: &PgPool) -> Result<Vec<SnakePlayerEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT la.id::text AS agent_id, la.name AS agent_name, u.username AS owner,
+               COUNT(b.id)                                           AS pvp_battles,
+               COUNT(b.id) FILTER (WHERE b.winner = la.name)        AS pvp_wins,
+               la.version,
+               COALESCE(ser.elo, 1500.0) AS elo
+        FROM (
+            SELECT DISTINCT ON (user_id, name) id, user_id, name,
+                (SELECT COUNT(*) FROM snake_agents a2 WHERE a2.user_id=snake_agents.user_id AND a2.name=snake_agents.name) AS version
+            FROM snake_agents
+            ORDER BY user_id, name, created_at DESC
+        ) la
+        JOIN users u ON u.id = la.user_id
+        LEFT JOIN snake_battles b ON b.challenger_id IS NOT NULL AND (
+            (b.challenger_id=la.user_id AND b.agent_name=la.name)
+            OR (b.opponent_id=la.user_id AND b.opponent=la.name)
+        )
+        LEFT JOIN snake_elo_ratings ser ON ser.user_id = la.user_id AND ser.agent_name = la.name
+        GROUP BY la.id, la.name, u.username, la.version, ser.elo
+        ORDER BY elo DESC, pvp_wins DESC, pvp_battles DESC
+    "#).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| SnakePlayerEntry {
+        agent_id:    r.get("agent_id"),
+        agent_name:  r.get("agent_name"),
+        owner:       r.get("owner"),
+        pvp_battles: r.get("pvp_battles"),
+        pvp_wins:    r.get("pvp_wins"),
+        version:     r.get("version"),
+        elo:         r.get("elo"),
+    }).collect())
+}
+
+pub async fn delete_snake_agent(
+    pool: &PgPool,
+    user_id: Uuid,
+    agent_name: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM snake_agents WHERE user_id=$1 AND name=$2")
+        .bind(user_id).bind(agent_name).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM snake_elo_ratings WHERE user_id=$1 AND agent_name=$2")
+        .bind(user_id).bind(agent_name).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
 }
