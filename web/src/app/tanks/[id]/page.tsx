@@ -688,34 +688,40 @@ export default function TankDetailPage() {
                 <p className="px-5 py-12 text-center text-sm font-bold text-black/50">暂无 PvP 对战记录</p>
               ) : tank.battles.map(battle => {
                 const won = battle.winner === tank.agent_name
-                const opponent = battle.challenger === tank.agent_name ? battle.opponent : battle.challenger
                 return (
                   <div key={battle.id} className="flex items-center gap-4 px-5 py-4 bg-white">
-                    {/* W/L 方块 */}
-                    <div
-                      className={`flex size-10 shrink-0 items-center justify-center border-4 border-black text-xs font-black ${won ? "bg-[#FF6B6B] text-white" : "bg-white text-white"}`}
-                    >
-                      {won ? "W" : "L"}
+                    {/* WIN/LOSS 方块 */}
+                    <div className={`relative flex size-12 shrink-0 flex-col items-center justify-center border-4 border-black font-black shadow-[3px_3px_0px_0px_#000] ${won ? "bg-[#00C853] text-white" : "bg-[#FF3D00] text-white"}`}>
+                      <span className="text-[9px] font-black tracking-widest opacity-80 leading-none">{won ? "WIN" : "LOSS"}</span>
+                      <span className="text-xl leading-tight">{won ? "★" : "✕"}</span>
                     </div>
-                    {/* 对手头像 */}
-                    <div
-                      className="flex size-10 shrink-0 items-center justify-center border-2 border-black text-xs font-black"
-                      style={{ background: `hsl(${[...opponent].reduce((a, c) => a + c.charCodeAt(0), 0) % 360},55%,65%)` }}
-                    >
-                      {opponent.slice(0, 2).toUpperCase()}
-                    </div>
-                    {/* 信息 */}
+                    {/* 对阵信息 */}
                     <div className="flex flex-1 flex-col gap-0.5 min-w-0">
-                      <span className="text-sm font-black uppercase truncate">{opponent}</span>
-                      <span className="text-[11px] font-bold text-black/50">
-                        {new Date(battle.created_at).toLocaleString("zh-CN")} · {battle.total_ticks} 回合
+                      <div className="flex items-center gap-1.5 flex-wrap text-sm font-black uppercase tracking-wide">
+                        {[battle.challenger, battle.opponent].map((name, i) => {
+                          const isMe = name === tank.agent_name
+                          return (
+                            <React.Fragment key={i}>
+                              {i === 1 && <span className="text-black/30 font-bold text-xs">VS</span>}
+                              <span className={isMe
+                                ? "border-2 border-black bg-[#FFE600] px-1.5 py-0.5 text-xs leading-none"
+                                : "text-black/70"
+                              }>
+                                {name.toUpperCase()}
+                              </span>
+                            </React.Fragment>
+                          )
+                        })}
+                      </div>
+                      <span className="text-xs font-bold text-black/50">
+                        {battle.total_ticks} 回合 · {new Date(battle.created_at).toLocaleString("zh-CN")}
                       </span>
                     </div>
                     <Link
                       href={`/replay/${battle.id}`}
-                      className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-xs font-black uppercase shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                      className="shrink-0 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                     >
-                      WATCH REPLAY
+                      观看回放
                     </Link>
                   </div>
                 )
