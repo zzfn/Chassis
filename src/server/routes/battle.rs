@@ -16,6 +16,7 @@ struct BattleRequest {
     code:          String,
     opponent:      String,
     opponent_code: String,
+    map_seed:      Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +57,7 @@ async fn handle_battle(
     let code          = req.code.clone();
     let opponent      = req.opponent.clone();
     let opponent_code = req.opponent_code.clone();
+    let map_seed      = req.map_seed;
 
     let result = tokio::task::spawn_blocking({
         let name          = name.clone();
@@ -67,7 +69,7 @@ async fn handle_battle(
                 (name.as_str(),     code.as_str(),          SkillType::Shield),
                 (opponent.as_str(), opponent_code.as_str(), SkillType::Shield),
             ];
-            let engine = ArenaEngine::new(owned)?;
+            let engine = ArenaEngine::new(owned, map_seed)?;
             Ok(engine.run())
         }
     })

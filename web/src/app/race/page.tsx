@@ -1,52 +1,57 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Loader2, Zap } from "lucide-react"
+import { Loader2, Zap, Settings2 } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 
-interface MyTank { agent_id: string; agent_name: string }
+interface ActiveTank {
+  agent_id:   string
+  agent_name: string
+  is_active:  boolean
+  skin?:      { svg?: string | null }
+}
 
 function RaceContent() {
-  const router       = useRouter()
-  const searchParams = useSearchParams()
+  const router = useRouter()
 
-  const [mode,           setMode]           = useState<"1v1" | "2v2">("1v1")
-  const [myTanks,        setMyTanks]        = useState<MyTank[]>([])
-  const [selectedTankId, setSelectedTankId] = useState<string | null>(null)
-  const [battling,       setBattling]       = useState(false)
-  const [error,          setError]          = useState<string | null>(null)
-  const [loading,        setLoading]        = useState(true)
+  const [mode,       setMode]       = useState<"1v1" | "2v2">("1v1")
+  const [activeTank, setActiveTank] = useState<ActiveTank | null>(null)
+  const [hasTanks,   setHasTanks]   = useState(true)
+  const [battling,   setBattling]   = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [mapSeed,    setMapSeed]    = useState("")
 
   useEffect(() => {
     const token = getCookie("token")
     if (!token) { router.push("/login"); return }
     fetch(`${apiBase}/api/my-tanks`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : [])
-      .then((tanks: MyTank[]) => {
-        setMyTanks(tanks)
-        const paramTank = searchParams.get("tank")
-        const match = tanks.find(t => t.agent_id === paramTank)
-        if (match) setSelectedTankId(match.agent_id)
+      .then((tanks: ActiveTank[]) => {
+        setHasTanks(tanks.length > 0)
+        const active = tanks.find(t => t.is_active) ?? tanks[0] ?? null
+        setActiveTank(active)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [searchParams])
+  }, [router])
 
   async function startMatch() {
     const token = getCookie("token")
     if (!token) { router.push("/login"); return }
-    if (!selectedTankId) { setError("请先选择出战坦克"); return }
     setBattling(true)
     setError(null)
     try {
       const endpoint = mode === "2v2" ? `${apiBase}/api/matchmake/2v2` : `${apiBase}/api/matchmake`
+      const seedNum = mapSeed.trim() ? Number(mapSeed.trim()) : undefined
       const res  = await fetch(endpoint, {
-        method:  "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ map_seed: seedNum ?? null }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "匹配失败")
@@ -57,8 +62,8 @@ function RaceContent() {
     }
   }
 
-  const selectedTank = myTanks.find(t => t.agent_id === selectedTankId) ?? null
-  const ready        = !!selectedTank && !battling
+  const svg   = activeTank?.skin?.svg
+  const ready = !!activeTank && !battling
 
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-[#0D0D1A] px-4 py-16">
@@ -141,7 +146,7 @@ function RaceContent() {
           })}
         </motion.div>
 
-        {/* ── 坦克选择 ── */}
+        {/* ── 出战坦克展示 ── */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -154,19 +159,28 @@ function RaceContent() {
             boxShadow:  "0 0 20px rgba(255,58,242,0.1)",
           }}
         >
-          {/* 标题栏 */}
           <div
-            className="flex items-center gap-3 px-4 py-2 border-b-2"
+            className="flex items-center justify-between gap-3 px-4 py-2 border-b-2"
             style={{ background: "rgba(255,58,242,0.06)", borderColor: "#FF3AF2" }}
           >
-            <span className="flex gap-1.5">
-              {["#FF3AF2", "#FFE600", "#00F5D4"].map(c => (
-                <span key={c} className="block size-2.5 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} />
-              ))}
-            </span>
-            <span className="font-mono text-[11px] uppercase tracking-[0.3em]" style={{ color: "#FF3AF2" }}>
-              SELECT_UNIT.DAT
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="flex gap-1.5">
+                {["#FF3AF2", "#FFE600", "#00F5D4"].map(c => (
+                  <span key={c} className="block size-2.5 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} />
+                ))}
+              </span>
+              <span className="font-mono text-[11px] uppercase tracking-[0.3em]" style={{ color: "#FF3AF2" }}>
+                ACTIVE_UNIT.DAT
+              </span>
+            </div>
+            <button
+              onClick={() => router.push("/tanks")}
+              className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest transition-opacity hover:opacity-70"
+              style={{ color: "rgba(255,255,255,0.35)" }}
+            >
+              <Settings2 className="size-3" />
+              切换
+            </button>
           </div>
 
           <div className="p-5">
@@ -175,7 +189,7 @@ function RaceContent() {
                 <Loader2 className="size-3.5 animate-spin" style={{ color: "#FF3AF2" }} />
                 <span className="font-mono text-xs text-white/30 uppercase tracking-wider">LOADING...</span>
               </div>
-            ) : myTanks.length === 0 ? (
+            ) : !hasTanks ? (
               <div className="flex items-center gap-3">
                 <span className="font-mono text-xs text-white/30 uppercase tracking-wider">无可用坦克 —</span>
                 <button
@@ -186,30 +200,67 @@ function RaceContent() {
                   去创建
                 </button>
               </div>
-            ) : (
-              <div className="flex flex-wrap gap-2.5">
-                {myTanks.map(t => {
-                  const active = selectedTankId === t.agent_id
-                  return (
-                    <motion.button
-                      key={t.agent_id}
-                      onClick={() => setSelectedTankId(active ? null : t.agent_id)}
-                      whileTap={{ scale: 0.95 }}
-                      className="-skew-x-6 px-5 py-2 font-mono text-xs font-black uppercase tracking-widest transition-all duration-200 hover:skew-x-0"
-                      style={{
-                        border:     `2px solid ${active ? "#FF3AF2" : "rgba(255,58,242,0.3)"}`,
-                        background: active ? "rgba(255,58,242,0.15)" : "transparent",
-                        color:      active ? "#FF3AF2" : "rgba(255,255,255,0.4)",
-                        boxShadow:  active ? "0 0 14px rgba(255,58,242,0.35)" : "none",
-                      }}
-                    >
-                      <span className="inline-block skew-x-6">{t.agent_name}</span>
-                    </motion.button>
-                  )
-                })}
+            ) : activeTank ? (
+              <div className="flex items-center gap-4">
+                {/* SVG 头像 */}
+                <div
+                  className="shrink-0 flex items-center justify-center rounded-full"
+                  style={{
+                    width:     64,
+                    height:    64,
+                    background: "rgba(255,58,242,0.12)",
+                    border:     "2px solid #FF3AF2",
+                    boxShadow:  "0 0 16px rgba(255,58,242,0.35)",
+                  }}
+                >
+                  {svg
+                    ? <svg viewBox="-20 -14 40 28" width={46} height={33}
+                        dangerouslySetInnerHTML={{ __html: svg }} />
+                    : <svg width={34} height={34} viewBox="0 0 20 20" fill="none">
+                        <rect x="2" y="6" width="16" height="8" rx="2" fill="#FF3AF2" />
+                        <rect x="8" y="2" width="5" height="7" rx="1" fill="#FF3AF2" opacity=".7" />
+                        <circle cx="5"  cy="15" r="2" fill="#FF3AF2" opacity=".6" />
+                        <circle cx="15" cy="15" r="2" fill="#FF3AF2" opacity=".6" />
+                      </svg>
+                  }
+                </div>
+                {/* 名字 + 状态 */}
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span
+                    className="truncate font-mono text-base font-black uppercase tracking-widest text-white"
+                  >
+                    {activeTank.agent_name}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-widest"
+                    style={{ color: "#00F5D4" }}
+                  >
+                    ● 出战中
+                  </span>
+                </div>
               </div>
-            )}
+            ) : null}
           </div>
+        </motion.div>
+
+        {/* ── 地图种子 ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.14 }}
+          className="w-full flex items-center gap-2"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-widest shrink-0" style={{ color: "rgba(255,255,255,0.25)" }}>
+            MAP SEED
+          </span>
+          <input
+            type="number"
+            value={mapSeed}
+            onChange={e => setMapSeed(e.target.value)}
+            placeholder="留空随机"
+            className="flex-1 bg-transparent font-mono text-xs text-white/60 placeholder:text-white/20 outline-none px-2 py-1.5 min-w-0"
+            style={{ border: "1px solid rgba(255,255,255,0.12)" }}
+          />
         </motion.div>
 
         {/* ── 开战按钮 ── */}

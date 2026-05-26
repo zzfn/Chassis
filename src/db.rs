@@ -445,6 +445,7 @@ pub struct UserTankEntry {
     pub elo: f64,
     pub skin: TankSkin,
     pub version: i64,
+    pub is_active: bool,
 }
 
 /// 每个坦克名取最新提交，附带绑定的密钥、PvP 聚合（战绩 + Elo）与皮肤
@@ -458,7 +459,8 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
                COUNT(b.id) FILTER (WHERE b.winner != sub.agent_name) AS pvp_losses,
                COALESCE(er.elo, 1000.0)                       AS elo,
                COALESCE(ts.skin, '{}'::jsonb)                 AS skin,
-               sub.version                                    AS version
+               sub.version                                    AS version,
+               (uat.agent_name IS NOT NULL AND uat.agent_name = sub.agent_name) AS is_active
         FROM (
             SELECT DISTINCT ON (name)
                 id::text AS agent_id, name AS agent_name, created_at, user_id,
@@ -473,9 +475,10 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
             OR
             (b.opponent_id  = sub.user_id AND b.opponent   = sub.agent_name)
         )
-        LEFT JOIN elo_ratings er ON er.user_id = sub.user_id AND er.agent_name = sub.agent_name
-        LEFT JOIN tank_skins  ts ON ts.user_id = sub.user_id AND ts.agent_name = sub.agent_name
-        GROUP BY sub.agent_id, sub.agent_name, sub.created_at, k.id, k.key, er.elo, ts.skin, sub.version
+        LEFT JOIN elo_ratings       er  ON er.user_id  = sub.user_id AND er.agent_name  = sub.agent_name
+        LEFT JOIN tank_skins        ts  ON ts.user_id  = sub.user_id AND ts.agent_name  = sub.agent_name
+        LEFT JOIN user_active_tanks uat ON uat.user_id = sub.user_id
+        GROUP BY sub.agent_id, sub.agent_name, sub.created_at, k.id, k.key, er.elo, ts.skin, sub.version, uat.agent_name
         ORDER BY sub.created_at DESC
     "#).bind(user_id).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| {
@@ -493,8 +496,38 @@ pub async fn get_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<Vec<UserTank
             elo:         r.get("elo"),
             skin,
             version:     r.get("version"),
+            is_active:   r.get("is_active"),
         }
     }).collect())
+}
+
+pub async fn set_active_tank(pool: &PgPool, user_id: Uuid, agent_name: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"
+        INSERT INTO user_active_tanks (user_id, agent_name)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET agent_name = EXCLUDED.agent_name
+    "#)
+    .bind(user_id).bind(agent_name)
+    .execute(pool).await?;
+    Ok(())
+}
+
+/// 优先返回激活坦克的最新版本，无激活记录则退回最新创建
+pub async fn get_active_or_latest_agent_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
+    let row = sqlx::query(r#"
+        SELECT a.id, a.user_id, a.name, a.code, a.skill_type
+        FROM agents a
+        WHERE a.user_id = $1
+          AND a.name = COALESCE(
+              (SELECT agent_name FROM user_active_tanks WHERE user_id = $1),
+              (SELECT name FROM agents WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1)
+          )
+        ORDER BY a.created_at DESC
+        LIMIT 1
+    "#)
+    .bind(user_id)
+    .fetch_optional(pool).await?;
+    Ok(row.as_ref().map(row_to_agent))
 }
 
 // ── 坦克详情 ─────────────────────────────────────────────────────────────────
@@ -818,6 +851,13 @@ pub async fn ensure_agents_table(pool: &PgPool) -> Result<(), sqlx::Error> {
             PRIMARY KEY (user_id, agent_name)
         )
     "#).execute(pool).await?;
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS user_active_tanks (
+            user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            agent_name TEXT NOT NULL,
+            PRIMARY KEY (user_id)
+        )
+    "#).execute(pool).await?;
     Ok(())
 }
 
@@ -1001,14 +1041,6 @@ pub async fn get_latest_agent_by_name(pool: &PgPool, user_id: Uuid, name: &str) 
     Ok(row.as_ref().map(row_to_agent))
 }
 
-pub async fn get_latest_agent_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
-    let row = sqlx::query(
-        "SELECT a.id, a.user_id, a.name, a.code, a.skill_type FROM agents a WHERE a.user_id = $1 ORDER BY a.created_at DESC LIMIT 1"
-    )
-    .bind(user_id)
-    .fetch_optional(pool).await?;
-    Ok(row.as_ref().map(row_to_agent))
-}
 
 pub async fn get_agent_by_id(pool: &PgPool, agent_id: Uuid) -> Result<Option<AgentRow>, sqlx::Error> {
     let row = sqlx::query(

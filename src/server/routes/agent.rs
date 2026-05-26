@@ -450,7 +450,7 @@ async fn agent_challenge(
             (c_name.as_str(), c_code.as_str(), c_skill),
             (o_name.as_str(), o_code.as_str(), o_skill),
         ];
-        let engine = ArenaEngine::new(owned)?;
+        let engine = ArenaEngine::new(owned, None)?;
         Ok(engine.run())
     }).await;
 
@@ -545,7 +545,7 @@ async fn agent_simulate(
             (name.as_str(),    code.as_str(),    SkillType::Shield),
             (op_name.as_str(), op_code.as_str(), SkillType::Shield),
         ];
-        let engine = ArenaEngine::new(owned)?;
+        let engine = ArenaEngine::new(owned, None)?;
         Ok(engine.run())
     }).await;
     match result {

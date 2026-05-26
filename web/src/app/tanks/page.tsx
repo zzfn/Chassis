@@ -132,6 +132,7 @@ interface Tank {
   skin?: TankSkin
   version?: number
   skill_type?: string
+  is_active?: boolean
 }
 
 const SKILLS = [
@@ -280,6 +281,7 @@ function TanksContent() {
   const [creatingStep,  setCreatingStep]  = useState<"" | "agent" | "skin">("")
   const [createError,   setCreateError]   = useState<string | null>(null)
   const [rerollingId,   setRerollingId]   = useState<string | null>(null)
+  const [activatingId,  setActivatingId]  = useState<string | null>(null)
 
   const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
   const [deletingId,  setDeletingId]  = useState<string | null>(null)
@@ -404,6 +406,23 @@ function TanksContent() {
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "创建失败")
       setCreating(false); setCreatingStep("")
+    }
+  }
+
+  async function handleActivate(tankId: string) {
+    const token = getCookie("token")
+    if (!token) { router.push("/login"); return }
+    setActivatingId(tankId)
+    try {
+      const res = await fetch(`${apiBase}/api/tanks/${tankId}/activate`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("激活失败")
+      setTanks(prev => prev.map(t => ({ ...t, is_active: t.agent_id === tankId })))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "激活失败")
+    } finally {
+      setActivatingId(null)
     }
   }
 
@@ -627,12 +646,22 @@ function TanksContent() {
                   <div className="flex gap-5 p-6">
                     <TankAvatar name={tank.agent_name} skin={tank.skin} size={20} />
                     <div className="flex flex-1 flex-col justify-center gap-2 min-w-0 pr-10">
-                      <h3
-                        className="truncate text-2xl font-black text-white"
-                        style={{ textShadow: `1px 1px 0 ${accent}` }}
-                      >
-                        {tank.agent_name}
-                      </h3>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3
+                          className="truncate text-2xl font-black text-white"
+                          style={{ textShadow: `1px 1px 0 ${accent}` }}
+                        >
+                          {tank.agent_name}
+                        </h3>
+                        {tank.is_active && (
+                          <span
+                            className="shrink-0 rounded-full border-2 px-2 py-0.5 font-mono text-[9px] font-black uppercase tracking-widest"
+                            style={{ borderColor: "#00F5D4", color: "#00F5D4", background: "rgba(0,245,212,0.1)" }}
+                          >
+                            出战中
+                          </span>
+                        )}
+                      </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className="inline-flex items-center gap-1 rounded-full border-4 px-3 py-0.5 text-xs font-black uppercase tracking-wide"
@@ -709,17 +738,30 @@ function TanksContent() {
                         ? <><Loader2 className="size-3.5 animate-spin" /><span>抽取中</span></>
                         : <><Shuffle className="size-3.5" /><span>⭐ 100</span></>}
                     </button>
-                    <button
-                      onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-full border-4 border-[#FFE600] py-2 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.03] active:scale-95"
-                      style={{
-                        background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
-                        boxShadow:   "0 0 12px rgba(255,58,242,0.35), 3px 3px 0 #FFE600",
-                      }}
-                    >
-                      <Swords className="size-4" />
-                      立即对战
-                    </button>
+                    {tank.is_active ? (
+                      <button
+                        onClick={() => router.push("/race")}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-full border-4 border-[#FFE600] py-2 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.03] active:scale-95"
+                        style={{
+                          background:  "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
+                          boxShadow:   "0 0 12px rgba(255,58,242,0.35), 3px 3px 0 #FFE600",
+                        }}
+                      >
+                        <Swords className="size-4" />
+                        出战
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleActivate(tank.agent_id)}
+                        disabled={activatingId === tank.agent_id}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-full border-4 border-dashed border-[#00F5D4] py-2 text-sm font-black uppercase tracking-widest transition-all duration-200 hover:scale-[1.03] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: "#00F5D4" }}
+                      >
+                        {activatingId === tank.agent_id
+                          ? <><Loader2 className="size-4 animate-spin" />激活中</>
+                          : <>激活出战</>}
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               </div>

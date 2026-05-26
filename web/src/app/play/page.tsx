@@ -239,6 +239,7 @@ function PlayContent({ onRestart }: { onRestart: () => void }) {
           // 炮管（body_angle=0 朝右，对应 East）
           g.beginFill(pal.dark).drawRoundedRect(TS * 0.05, -TS * 0.06, TS * 0.5, TS * 0.12, 2).endFill()
           body.addChild(g)
+          body.scale.set(1.25)
           root.addChild(body)
           tl.addChild(root)
           sp = { root, body }
@@ -274,7 +275,7 @@ function PlayContent({ onRestart }: { onRestart: () => void }) {
         const ss = frame.stars ?? []
         while (starSprites.current.length < ss.length) {
           const sp = new PIXI.Sprite(PIXI.Texture.WHITE)
-          sp.tint = 0xfbbf24; sp.width = sp.height = 14; sp.anchor.set(0.5)
+          sp.tint = 0xfbbf24; sp.width = sp.height = 26; sp.anchor.set(0.5)
           sl.addChild(sp); starSprites.current.push(sp)
         }
         starSprites.current.forEach((sp, i) => {

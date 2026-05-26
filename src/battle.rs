@@ -128,8 +128,11 @@ impl ArenaEngine {
 }
 
 impl ArenaEngine {
-    pub fn new(specs: Vec<(&str, &str, SkillType)>) -> Result<Self, String> {
-        let map = physics::init_map();
+    pub fn new(specs: Vec<(&str, &str, SkillType)>, map_seed: Option<u64>) -> Result<Self, String> {
+        let map = match map_seed {
+            Some(s) => physics::init_map_with_seed(s),
+            None    => physics::init_map(),
+        };
         let agents = specs
             .into_iter()
             .enumerate()

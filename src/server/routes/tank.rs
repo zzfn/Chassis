@@ -7,6 +7,11 @@ use axum::{
 use serde::Deserialize;
 use uuid::Uuid;
 
+#[derive(Deserialize, Default)]
+struct MatchmakeRequest {
+    map_seed: Option<u64>,
+}
+
 use crate::{battle::ArenaEngine, db, physics::SkillType};
 use crate::server::{
     AppState, json_err, extract_user_id, resolve_auth, AuthCtx,
@@ -70,7 +75,10 @@ async fn submit_agent(
         Err(e) => return json_err(500, &e.to_string()),
     };
 
-    // 首次创建坦克 → 自动生成 API Key（失败不阻塞响应）
+    // 首次创建坦克 → 自动激活 + 自动生成 API Key（失败不阻塞响应）
+    if is_first_time {
+        let _ = db::set_active_tank(pool, user_id, &name).await;
+    }
     let api_key = if is_first_time {
         match db::create_api_key(pool, user_id, &name).await {
             Ok(entry) => Some(entry),
@@ -223,7 +231,7 @@ async fn handle_challenge(
     };
 
     let (challenger, opponent) = match tokio::try_join!(
-        db::get_latest_agent_by_user_id(pool, challenger_id),
+        db::get_active_or_latest_agent_by_user_id(pool, challenger_id),
         db::get_agent_by_id(pool, opponent_agent_id),
     ) {
         Ok(pair) => pair,
@@ -250,12 +258,14 @@ async fn handle_challenge(
         Ok(Ok(p)) => p,
         _ => return json_err(503, "服务器繁忙，请稍后再试"),
     };
+    let map_seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as u64;
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
             (o_name.as_str(), o_code.as_str(), o_skill),
         ];
-        let engine = ArenaEngine::new(owned)?;
+        let engine = ArenaEngine::new(owned, Some(map_seed))?;
         Ok(engine.run())
     }).await;
 
@@ -282,13 +292,15 @@ async fn handle_challenge(
 async fn handle_matchmake(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
 ) -> impl IntoResponse {
+    let req: MatchmakeRequest = serde_json::from_slice(&body).unwrap_or_default();
     let pool = &state.pool;
     let Some(challenger_id) = extract_user_id(&headers, &state.jwt_secret) else {
         return json_err(401, "未登录");
     };
 
-    let challenger = match db::get_latest_agent_by_user_id(pool, challenger_id).await {
+    let challenger = match db::get_active_or_latest_agent_by_user_id(pool, challenger_id).await {
         Ok(Some(a)) => a,
         Ok(None)    => return json_err(404, "请先提交坦克"),
         Err(e)      => return json_err(500, &e.to_string()),
@@ -313,12 +325,16 @@ async fn handle_matchmake(
         Ok(Ok(p)) => p,
         _ => return json_err(503, "服务器繁忙，请稍后再试"),
     };
+    let map_seed = req.map_seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as u64
+    });
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
             (o_name.as_str(), o_code.as_str(), o_skill),
         ];
-        let engine = ArenaEngine::new(owned)?;
+        let engine = ArenaEngine::new(owned, Some(map_seed))?;
         Ok(engine.run())
     }).await;
 
@@ -349,14 +365,16 @@ async fn handle_matchmake(
 async fn handle_matchmake_2v2(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
 ) -> impl IntoResponse {
+    let req: MatchmakeRequest = serde_json::from_slice(&body).unwrap_or_default();
     let pool = &state.pool;
     let Some(challenger_id) = extract_user_id(&headers, &state.jwt_secret) else {
         return json_err(401, "未登录");
     };
 
-    // 取玩家最新坦克
-    let challenger = match db::get_latest_agent_by_user_id(pool, challenger_id).await {
+    // 取玩家激活坦克
+    let challenger = match db::get_active_or_latest_agent_by_user_id(pool, challenger_id).await {
         Ok(Some(a)) => a,
         Ok(None)    => return json_err(404, "请先提交坦克"),
         Err(e)      => return json_err(500, &e.to_string()),
@@ -393,6 +411,10 @@ async fn handle_matchmake_2v2(
         Ok(Ok(p)) => p,
         _ => return json_err(503, "服务器繁忙，请稍后再试"),
     };
+    let map_seed = req.map_seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as u64
+    });
     let battle_result = tokio::task::spawn_blocking(move || -> Result<crate::battle::BattleResult, String> {
         // 顺序：[0]=挑战者(team0), [1]=随机B(team1), [2]=随机A(team0), [3]=随机C(team1)
         // ArenaEngine 按 id%2 分队：偶数=team0, 奇数=team1
@@ -402,7 +424,7 @@ async fn handle_matchmake_2v2(
             (a_name.as_str(),  a_code.as_str(),  a_skill),   // id=2, team0
             (cc_name.as_str(), cc_code.as_str(), cc_skill),  // id=3, team1
         ];
-        let engine = ArenaEngine::new(owned)?;
+        let engine = ArenaEngine::new(owned, Some(map_seed))?;
         Ok(engine.run())
     }).await;
 
@@ -564,6 +586,27 @@ async fn put_skin(
         Ok(None) => json_err(404, "坦克不存在"),
         Err(e)   => json_err(500, &e.to_string()),
     }
+}
+
+async fn activate_tank(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let Some(user_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+    let (owner_id, agent_name, _) = match db::get_skin_by_agent_id(pool, id).await {
+        Ok(Some(row)) => row,
+        Ok(None)      => return json_err(404, "坦克不存在"),
+        Err(e)        => return json_err(500, &e.to_string()),
+    };
+    if owner_id != user_id { return json_err(403, "无权操作"); }
+    if let Err(e) = db::set_active_tank(pool, user_id, &agent_name).await {
+        return json_err(500, &e.to_string());
+    }
+    axum::Json(serde_json::json!({ "ok": true, "active": agent_name })).into_response()
 }
 
 const SKILL_POOL: &[&str] = &["shield","freeze","stun","overload","cloak","poison","teleport","boost"];
@@ -729,6 +772,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/tanks/:id/versions",      get(get_tank_versions))
         .route("/api/tanks/:id/skin",          get(get_skin).put(put_skin))
         .route("/api/tanks/:id/skin/generate", axum::routing::post(generate_skin))
+        .route("/api/tanks/:id/activate",      axum::routing::post(activate_tank))
         .route("/api/tanks/:id/skill/reroll",  axum::routing::post(reroll_skill))
         .route("/api/players",                 get(list_players))
         .route("/api/challenge/:agent_id",     post(handle_challenge))

@@ -404,7 +404,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         const sp = PIXI.Sprite.from(svgUrl(
           `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -14 40 28">${skin.svg}</svg>`
         ))
-        sp.width = TS; sp.height = TS * 0.7; sp.anchor.set(0.5)
+        sp.width = TS * 1.25; sp.height = TS * 0.875; sp.anchor.set(0.5)
         body.addChild(sp)
       } else {
         const teamId = t.team_id ?? (t.id % 2)
@@ -420,6 +420,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         // 炮管（朝右 = body_angle=0 对应 East）
         g.beginFill(pal.dark).drawRoundedRect(TS * 0.05, -TS * 0.06, TS * 0.5, TS * 0.12, 2).endFill()
         body.addChild(g)
+        body.scale.set(1.25)
       }
 
       // HP 条（不随 body 旋转，固定朝上）
@@ -535,6 +536,15 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
                   fxLayer.current.addChild(g)
                   // 偏移一格到实际碰撞点（遥测记录的是移动前位置）
                   explosions.current.push({ x: (b.x + b.vx * TILE) * S, y: (b.y + b.vy * TILE) * S, g, t: 0, color })
+                }
+              })
+              // 土堆新摧毁检测
+              const prevDmSet = new Set((prev.current.destroyed_mounds ?? []).map(([dc, dr]) => `${dc},${dr}`))
+              ;(curr.current.destroyed_mounds ?? []).forEach(([col, row]) => {
+                if (!prevDmSet.has(`${col},${row}`) && fxLayer.current) {
+                  const g = new PIXI.Graphics()
+                  fxLayer.current.addChild(g)
+                  explosions.current.push({ x: (col * 40 + 20) * S, y: (row * 40 + 20) * S, g, t: 0, color: 0xb56030 })
                 }
               })
             }
@@ -740,7 +750,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         const ss = c.stars ?? []
         while (stars.current.length < ss.length) {
           const sp = PIXI.Sprite.from(svgUrl(STAR_SVG))
-          sp.width = sp.height = 20; sp.anchor.set(0.5)
+          sp.width = sp.height = 25; sp.anchor.set(0.5)
           sl.addChild(sp); stars.current.push(sp)
         }
         stars.current.forEach((sp, i) => {

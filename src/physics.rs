@@ -397,6 +397,53 @@ pub fn init_map() -> Map {
     MAP_STR.iter().map(|row| row.chars().map(Tile::from_char).collect()).collect()
 }
 
+fn lcg_next(s: &mut u64) -> u64 {
+    *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *s >> 33
+}
+
+pub fn init_map_with_seed(seed: u64) -> Map {
+    // 基础地图框架：保留外墙/永久墙/草丛，土堆替换为地板
+    let mut base: Map = MAP_STR.iter()
+        .map(|row| row.chars().map(|c| if c == 'm' { Tile::Floor } else { Tile::from_char(c) }).collect())
+        .collect();
+
+    let spawns: [(usize, usize); 4] = [(1, 1), (18, 18), (18, 1), (1, 18)];
+
+    // 收集候选位置（只遍历上半区，通过对称保证公平）
+    let mut candidates: Vec<(usize, usize)> = Vec::new();
+    for r in 1..=9usize {
+        for c in 1..=18usize {
+            let sr = 19 - r;
+            let sc = 19 - c;
+            if base[r][c] != Tile::Floor || base[sr][sc] != Tile::Floor { continue; }
+            let too_close = spawns.iter().any(|&(pr, pc)| {
+                (r as isize - pr as isize).unsigned_abs() + (c as isize - pc as isize).unsigned_abs() <= 2
+                || (sr as isize - pr as isize).unsigned_abs() + (sc as isize - pc as isize).unsigned_abs() <= 2
+            });
+            if too_close { continue; }
+            candidates.push((r, c));
+        }
+    }
+
+    // Fisher-Yates 洗牌
+    let mut rng = seed;
+    let n = candidates.len();
+    for i in (1..n).rev() {
+        let j = (lcg_next(&mut rng) as usize) % (i + 1);
+        candidates.swap(i, j);
+    }
+
+    // 放置 8-10 对土堆
+    let count = 8 + (lcg_next(&mut rng) % 3) as usize;
+    for &(r, c) in candidates.iter().take(count) {
+        base[r][c] = Tile::Mound;
+        base[19 - r][19 - c] = Tile::Mound;
+    }
+
+    base
+}
+
 pub fn map_to_strings(map: &Map) -> Vec<String> {
     map.iter().map(|row| row.iter().map(|t| t.to_char()).collect()).collect()
 }
