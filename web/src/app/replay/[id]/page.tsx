@@ -10,6 +10,8 @@ interface TankSnapshot {
   id: number; name: string; x: number; y: number
   body_angle: number; hp: number; alive: boolean; score: number
   team_id?: number
+  shielded?: boolean; cloaked?: boolean; boosted?: boolean; overloaded?: boolean
+  frozen?: boolean; stunned?: boolean; poisoned?: boolean
 }
 interface BulletSnapshot { id: number; x: number; y: number; owner_id: number; vx: number; vy: number }
 interface StarSnapshot   { x: number; y: number }
@@ -303,7 +305,8 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
   type TankSprites = {
     root: PIXI.Container; body: PIXI.Container; flash: PIXI.Graphics
     hpBar: PIXI.Graphics; scoreText: PIXI.Text
-    _lastHp: number; _lastScore: number
+    statusRing: PIXI.Graphics; statusIcon: PIXI.Text
+    _lastHp: number; _lastScore: number; _lastStatus: string
   }
   const tanks        = useRef<Map<number, TankSprites>>(new Map())
   const bullets      = useRef<PIXI.Graphics[]>([])
@@ -434,9 +437,22 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
       // 命中闪光覆盖（在 body 上层，初始不可见）
       const flash = new PIXI.Graphics()
 
+      // 技能状态光环（护盾/隐身/加速/过载等）
+      const statusRing = new PIXI.Graphics()
+
+      // 技能状态图标（❄冻结 ⚡眩晕 ✦中毒）
+      const statusIcon = new PIXI.Text('', new PIXI.TextStyle({
+        fontSize: 11, fill: 0xffffff, fontFamily: 'monospace',
+        dropShadow: true, dropShadowDistance: 1, dropShadowColor: 0x000000, dropShadowAlpha: 1,
+      }))
+      statusIcon.anchor.set(0.5, 1)
+      statusIcon.y = -TS * 0.72
+
+      root.addChild(statusRing)
       root.addChild(body)
       root.addChild(hpBar)
       root.addChild(scoreText)
+      root.addChild(statusIcon)
       root.addChild(flash)
       tankLayer.addChild(root)
 
@@ -446,7 +462,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
       hpBar.beginFill(0x000000, 0.45).drawRect(-bw / 2, 0, bw, 3).endFill()
       hpBar.beginFill(0x4ade80, 0.9).drawRect(-bw / 2, 0, bw * initPct, 3).endFill()
 
-      tanks.current.set(t.id, { root, body, flash, hpBar, scoreText, _lastHp: t.hp, _lastScore: t.score })
+      tanks.current.set(t.id, { root, body, flash, hpBar, scoreText, statusRing, statusIcon, _lastHp: t.hp, _lastScore: t.score, _lastStatus: '' })
     })
 
     // 边框
@@ -487,7 +503,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         accum.current = MS_PER_TICK   // 立即定位到目标帧，alpha=1
         // 清除 seek 跳跃残留的特效，并强制 HP/score 重绘
         hitFlashes.current.clear()
-        tanks.current.forEach(sp => { sp.flash.clear(); sp._lastHp = -1; sp._lastScore = -1 })
+        tanks.current.forEach(sp => { sp.flash.clear(); sp.statusRing.clear(); sp.statusIcon.text = ''; sp._lastHp = -1; sp._lastScore = -1; sp._lastStatus = '' })
         explosions.current.forEach(ex => { ex.g.parent?.removeChild(ex.g); ex.g.destroy() })
         explosions.current = []
         return                         // 本帧跳过推进，下帧再开始
@@ -578,6 +594,58 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         if (da >  Math.PI) da -= Math.PI * 2
         if (da < -Math.PI) da += Math.PI * 2
         sp.body.rotation = fa + da * ea
+
+        // ── 技能状态特效（只在状态变化时重绘）────────────────────
+        const statusKey = [
+          t.shielded ? 'S' : '', t.cloaked ? 'C' : '', t.boosted ? 'B' : '',
+          t.overloaded ? 'O' : '', t.frozen ? 'F' : '', t.stunned ? 'N' : '', t.poisoned ? 'P' : '',
+        ].join('')
+        if (sp._lastStatus !== statusKey) {
+          sp._lastStatus = statusKey
+          sp.statusRing.clear()
+          sp.statusIcon.text = ''
+
+          // 隐身：坦克本体半透明
+          sp.body.alpha = t.cloaked ? 0.32 : 1
+
+          // 护盾：蓝色双层光环
+          if (t.shielded) {
+            sp.statusRing.lineStyle(2.5, 0x38bdf8, 0.9).drawCircle(0, 0, TS * 0.46)
+            sp.statusRing.lineStyle(1,   0x7dd3fc, 0.45).drawCircle(0, 0, TS * 0.54)
+          }
+          // 过载：橙色内圈光环
+          if (t.overloaded) {
+            sp.statusRing.lineStyle(2, 0xf97316, 0.85).drawCircle(0, 0, TS * 0.38)
+            sp.statusRing.beginFill(0xf97316, 0.12).drawCircle(0, 0, TS * 0.38).endFill()
+          }
+          // 加速：青绿色弧形尾迹
+          if (t.boosted) {
+            sp.statusRing.lineStyle(2, 0x4ade80, 0.7).drawCircle(0, 0, TS * 0.42)
+            sp.statusRing.lineStyle(1, 0x86efac, 0.35).drawCircle(0, 0, TS * 0.50)
+          }
+          // 冻结：青色覆盖 + ❄
+          if (t.frozen) {
+            sp.statusRing.beginFill(0x67e8f9, 0.28).drawRoundedRect(-TS * 0.32, -TS * 0.22, TS * 0.64, TS * 0.44, 3).endFill()
+            sp.statusRing.lineStyle(1.5, 0x22d3ee, 0.8).drawRoundedRect(-TS * 0.32, -TS * 0.22, TS * 0.64, TS * 0.44, 3)
+            sp.statusIcon.text = '❄'
+            sp.statusIcon.style.fill = 0x67e8f9
+          }
+          // 眩晕：黄色 ⚡
+          if (t.stunned) {
+            sp.statusRing.beginFill(0xfde047, 0.18).drawRoundedRect(-TS * 0.32, -TS * 0.22, TS * 0.64, TS * 0.44, 3).endFill()
+            sp.statusIcon.text = '⚡'
+            sp.statusIcon.style.fill = 0xfde047
+          }
+          // 中毒：绿色 ✦
+          if (t.poisoned) {
+            sp.statusRing.beginFill(0x4ade80, 0.18).drawRoundedRect(-TS * 0.32, -TS * 0.22, TS * 0.64, TS * 0.44, 3).endFill()
+            sp.statusRing.lineStyle(1, 0x86efac, 0.5).drawCircle(0, 0, TS * 0.44)
+            sp.statusIcon.text = '☠'
+            sp.statusIcon.style.fill = 0x86efac
+          }
+        }
+        sp.statusRing.visible = t.alive
+        sp.statusIcon.visible = t.alive
       })
 
       // 子弹
