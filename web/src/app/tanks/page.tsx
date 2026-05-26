@@ -492,7 +492,7 @@ function TanksContent() {
                 className="flex items-center gap-2 rounded-full border-4 px-4 py-1.5"
                 style={{ borderColor: "#FFE600", background: "rgba(255,230,0,0.1)", boxShadow: "0 0 12px rgba(255,230,0,0.25)" }}
               >
-                <span className="text-sm">💎</span>
+                <span className="text-sm">⭐</span>
                 <span className="font-mono text-sm font-black text-[#FFE600]">{credits}</span>
                 <span className="text-xs font-black uppercase tracking-widest text-[#FFE600]/60">积分</span>
               </div>
@@ -511,7 +511,7 @@ function TanksContent() {
               新建坦克
               {tanks.length > 0 && (
                 <span className="ml-1 rounded-full bg-[#FFE600]/20 border border-[#FFE600]/50 px-2 py-0.5 text-[10px] font-black text-[#FFE600]">
-                  💎 200
+                  ⭐ 200
                 </span>
               )}
             </motion.button>
@@ -701,13 +701,13 @@ function TanksContent() {
                     <button
                       onClick={() => handleReroll(tank.agent_id)}
                       disabled={rerollingId === tank.agent_id || (credits !== null && credits < 100)}
-                      title={credits !== null && credits < 100 ? "积分不足（需 100）" : "花费 💎 100 积分随机抽取新技能"}
+                      title={credits !== null && credits < 100 ? "积分不足（需 100）" : "花费 ⭐ 100 积分随机抽取新技能"}
                       className="flex items-center gap-1.5 rounded-full border-4 border-dashed px-4 py-2 text-sm font-black uppercase tracking-widest transition-all duration-150 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ borderColor: "#FFE600", color: "#FFE600" }}
                     >
                       {rerollingId === tank.agent_id
                         ? <><Loader2 className="size-3.5 animate-spin" /><span>抽取中</span></>
-                        : <><Shuffle className="size-3.5" /><span>💎 100</span></>}
+                        : <><Shuffle className="size-3.5" /><span>⭐ 100</span></>}
                     </button>
                     <button
                       onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
@@ -856,7 +856,7 @@ function TanksContent() {
                   <span className="flex items-center gap-2">
                     创建坦克
                     <span className="rounded-full border-2 border-[#FFE600]/60 bg-[#FFE600]/15 px-2.5 py-0.5 text-xs font-black text-[#FFE600]">
-                      💎 200 积分
+                      ⭐ 200 积分
                     </span>
                   </span>
                 ) : "创建坦克（免费）"}

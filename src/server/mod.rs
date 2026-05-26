@@ -190,15 +190,60 @@ pub(crate) async fn send_verification_email(
 ) -> Result<(), String> {
     let verify_url = format!("{}/verify-email?token={}", app_url, token);
     let html = format!(r#"
-<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0d0d1a;color:#fff;border-radius:12px">
-  <h1 style="font-size:22px;font-weight:900;margin:0 0 8px">验证你的 DeepTank 账户</h1>
-  <p style="color:#a1a1aa;margin:0 0 24px">你好 {username}，点击下方按钮完成邮箱验证。</p>
-  <a href="{verify_url}"
-     style="display:inline-block;background:#2563eb;color:#fff;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none">
-    验证邮箱
-  </a>
-  <p style="color:#52525b;font-size:12px;margin:24px 0 0">链接 24 小时内有效。若非本人操作，忽略此邮件即可。</p>
-</div>
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#08080f;font-family:'Segoe UI',system-ui,sans-serif">
+  <div style="max-width:520px;margin:40px auto;padding:0 16px">
+
+    <!-- 外框 -->
+    <div style="border:3px solid #7B2FFF;border-radius:20px;overflow:hidden;box-shadow:6px 6px 0 #00F5D4,12px 12px 0 #FF3AF2">
+
+      <!-- 顶部渐变条 -->
+      <div style="height:4px;background:linear-gradient(90deg,#7B2FFF,#FF3AF2,#00F5D4,#FFE600)"></div>
+
+      <!-- Header -->
+      <div style="background:#0d0d1a;padding:32px 36px 24px;border-bottom:3px solid #00F5D4">
+        <div style="display:inline-block;background:linear-gradient(135deg,rgba(0,245,212,0.15),rgba(123,47,255,0.15));border:3px solid #00F5D4;border-radius:50%;width:60px;height:60px;line-height:60px;text-align:center;font-size:28px;box-shadow:0 0 20px rgba(0,245,212,0.3)">✉️</div>
+        <h1 style="font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:2px;margin:16px 0 6px;color:#fff;text-shadow:2px 2px 0 #00F5D4">验证邮箱</h1>
+        <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0">完成验证，投入 AI 坦克战场</p>
+      </div>
+
+      <!-- Body -->
+      <div style="background:rgba(45,27,78,0.6);padding:28px 36px">
+        <p style="color:rgba(255,255,255,0.75);font-size:15px;margin:0 0 20px">
+          你好 <strong style="color:#FFE600">{username}</strong>，欢迎加入 DeepTank！<br>
+          点击下方按钮完成邮箱验证。
+        </p>
+
+        <!-- CTA 按钮 -->
+        <div style="text-align:center;margin:24px 0">
+          <a href="{verify_url}"
+             style="display:inline-block;background:linear-gradient(135deg,#7B2FFF,#FF3AF2);color:#fff;font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:2px;padding:14px 36px;border-radius:100px;text-decoration:none;border:3px solid #FFE600;box-shadow:0 0 20px rgba(123,47,255,0.5),4px 4px 0 #FFE600">
+            验证邮箱 →
+          </a>
+        </div>
+
+        <!-- 链接备用 -->
+        <div style="background:rgba(0,245,212,0.06);border:2px dashed rgba(0,245,212,0.3);border-radius:12px;padding:14px 18px;margin-top:20px">
+          <p style="color:rgba(0,245,212,0.7);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 6px">按钮无效？复制链接到浏览器</p>
+          <p style="color:rgba(255,255,255,0.5);font-size:11px;word-break:break-all;margin:0">{verify_url}</p>
+        </div>
+
+        <p style="color:rgba(255,255,255,0.25);font-size:11px;margin:20px 0 0;text-align:center">
+          链接 24 小时内有效 · 若非本人操作，忽略即可
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#0d0d1a;padding:16px 36px;border-top:2px dashed rgba(123,47,255,0.4);text-align:center">
+        <p style="color:rgba(255,255,255,0.2);font-size:11px;margin:0">© DeepTank · AI 坦克竞技场</p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
 "#, username = username, verify_url = verify_url);
 
     let client = reqwest::Client::new();

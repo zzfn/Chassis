@@ -152,6 +152,46 @@ async fn delete_key(
 #[derive(Deserialize)]
 struct VerifyEmailQuery { token: String }
 
+#[derive(Deserialize)]
+struct ResendRequest { email: String }
+
+async fn handle_resend_verification(
+    State(state): State<AppState>,
+    Json(req): Json<ResendRequest>,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let user = match db::find_user_by_email(pool, req.email.trim()).await {
+        Ok(Some(u)) => u,
+        Ok(None)    => return axum::Json(serde_json::json!({ "message": "若邮箱存在，验证邮件已发送" })).into_response(),
+        Err(e)      => return json_err(500, &e.to_string()),
+    };
+    if user.email_verified {
+        return json_err(400, "邮箱已验证，请直接登录");
+    }
+    if user.banned {
+        return json_err(403, "账户已被封禁");
+    }
+    let token = match db::create_verification_token(pool, user.id).await {
+        Ok(t)  => t,
+        Err(e) => return json_err(500, &e.to_string()),
+    };
+    if !state.resend_api_key.is_empty() {
+        if let Err(e) = send_verification_email(
+            &state.resend_api_key,
+            &state.from_email,
+            req.email.trim(),
+            &user.username,
+            &state.app_url,
+            &token,
+        ).await {
+            eprintln!("[Email] 重发失败: {}", e);
+        }
+    } else {
+        println!("[Email] 重发链接: {}/verify-email?token={}", state.app_url, token);
+    }
+    axum::Json(serde_json::json!({ "message": "验证邮件已重新发送" })).into_response()
+}
+
 async fn handle_verify_email(
     State(state): State<AppState>,
     Query(q): Query<VerifyEmailQuery>,
@@ -196,7 +236,8 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/register",     post(handle_register))
         .route("/api/login",        post(handle_login))
-        .route("/api/verify-email", get(handle_verify_email))
+        .route("/api/verify-email",        get(handle_verify_email))
+        .route("/api/resend-verification", post(handle_resend_verification))
         .route("/api/me",           get(handle_me))
         .route("/api/keys",         get(list_keys).post(create_key))
         .route("/api/keys/:id",     axum::routing::delete(delete_key))
