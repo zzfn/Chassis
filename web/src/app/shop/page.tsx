@@ -239,11 +239,11 @@ function BulletCard({
         <button
           onClick={canAfford ? onBuy : undefined}
           disabled={!canAfford}
-          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:hover:scale-100"
           style={{
-            borderColor: canAfford ? "#FF6B35" : "rgba(255,255,255,0.2)",
-            color:       canAfford ? "#0D0D1A"  : "rgba(255,255,255,0.35)",
-            background:  canAfford ? "linear-gradient(135deg, #FF6B35, #FF3AF2)" : "rgba(255,255,255,0.05)",
+            borderColor: canAfford ? "#FF6B35" : "rgba(255,255,255,0.25)",
+            color:       canAfford ? "#0D0D1A"  : "rgba(255,255,255,0.45)",
+            background:  canAfford ? "linear-gradient(135deg, #FF6B35, #FF3AF2)" : "rgba(255,255,255,0.08)",
           }}
         >
           {canAfford ? "购买" : "星币不足"}
@@ -335,11 +335,11 @@ function NameColorCard({
         <button
           onClick={canAfford ? onBuy : undefined}
           disabled={!canAfford}
-          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:hover:scale-100"
           style={{
-            borderColor: canAfford ? "#00F5D4" : "rgba(255,255,255,0.2)",
-            color:       canAfford ? "#0D0D1A" : "rgba(255,255,255,0.35)",
-            background:  canAfford ? "linear-gradient(135deg, #00F5D4, #7B2FFF)" : "rgba(255,255,255,0.05)",
+            borderColor: canAfford ? "#00F5D4" : "rgba(255,255,255,0.25)",
+            color:       canAfford ? "#0D0D1A" : "rgba(255,255,255,0.45)",
+            background:  canAfford ? "linear-gradient(135deg, #00F5D4, #7B2FFF)" : "rgba(255,255,255,0.08)",
           }}
         >
           {canAfford ? "购买" : "星币不足"}

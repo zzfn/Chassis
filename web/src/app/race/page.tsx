@@ -131,7 +131,7 @@ function RaceContent() {
                 style={{
                   border:     `2px ${active ? "solid" : "dashed"} ${active ? "#00F5D4" : "rgba(255,255,255,0.2)"}`,
                   background: active ? "#00F5D4" : "transparent",
-                  color:      active ? "#000" : "rgba(255,255,255,0.3)",
+                  color:      active ? "#000" : "rgba(255,255,255,0.6)",
                   boxShadow:  active ? "0 0 14px rgba(0,245,212,0.35)" : "none",
                 }}
               >
