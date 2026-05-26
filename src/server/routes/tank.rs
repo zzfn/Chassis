@@ -157,6 +157,31 @@ async fn delete_tank(
     }
 }
 
+#[derive(serde::Deserialize)]
+struct RenameRequest { name: String }
+
+async fn rename_tank(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Path(agent_id): Path<Uuid>,
+    Json(req): Json<RenameRequest>,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let Some(user_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+    let new_name = req.name.trim().to_string();
+    if new_name.is_empty() || new_name.len() > 32 {
+        return json_err(400, "名称长度需在 1-32 个字符之间");
+    }
+    match db::rename_tank(pool, agent_id, user_id, &new_name).await {
+        Ok(Some(true))  => axum::Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Some(false)) => json_err(403, "无权修改该坦克"),
+        Ok(None)        => json_err(404, "坦克不存在"),
+        Err(e)          => json_err(500, &e.to_string()),
+    }
+}
+
 async fn get_tank_versions(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
@@ -700,6 +725,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/agent",                   get(get_my_agent).post(submit_agent))
         .route("/api/my-tanks",                get(list_my_tanks))
         .route("/api/tanks/:id",               get(get_tank).delete(delete_tank))
+        .route("/api/tanks/:id/rename",        axum::routing::post(rename_tank))
         .route("/api/tanks/:id/versions",      get(get_tank_versions))
         .route("/api/tanks/:id/skin",          get(get_skin).put(put_skin))
         .route("/api/tanks/:id/skin/generate", axum::routing::post(generate_skin))

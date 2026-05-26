@@ -551,6 +551,55 @@ pub async fn delete_tank(pool: &PgPool, agent_id: Uuid, user_id: Uuid) -> Result
     Ok(Some(true))
 }
 
+/// 重命名坦克，同步更新 battles / tank_skins / elo_ratings / api_keys。
+/// 返回 None = 坦克不存在，Some(false) = 无权限，Some(true) = 成功。
+pub async fn rename_tank(
+    pool: &PgPool,
+    agent_id: Uuid,
+    user_id: Uuid,
+    new_name: &str,
+) -> Result<Option<bool>, sqlx::Error> {
+    use sqlx::Row;
+    let row = sqlx::query("SELECT user_id, name FROM agents WHERE id = $1 LIMIT 1")
+        .bind(agent_id)
+        .fetch_optional(pool).await?;
+    let Some(r) = row else { return Ok(None); };
+    let owner: Uuid    = r.get("user_id");
+    let old_name: String = r.get("name");
+    if owner != user_id { return Ok(Some(false)); }
+    if old_name == new_name { return Ok(Some(true)); }
+
+    let mut tx = pool.begin().await?;
+    // 更新所有版本的名称
+    sqlx::query("UPDATE agents SET name = $1 WHERE user_id = $2 AND name = $3")
+        .bind(new_name).bind(user_id).bind(&old_name).execute(&mut *tx).await?;
+    // 对战记录：作为 challenger 的行
+    sqlx::query(
+        "UPDATE battles SET
+           agent_name = $1,
+           winner     = CASE WHEN winner = $2 THEN $1 ELSE winner END
+         WHERE challenger_id = $3 AND agent_name = $2",
+    )
+    .bind(new_name).bind(&old_name).bind(user_id).execute(&mut *tx).await?;
+    // 对战记录：作为 opponent 的行
+    sqlx::query(
+        "UPDATE battles SET
+           opponent = $1,
+           winner   = CASE WHEN winner = $2 THEN $1 ELSE winner END
+         WHERE opponent_id = $3 AND opponent = $2",
+    )
+    .bind(new_name).bind(&old_name).bind(user_id).execute(&mut *tx).await?;
+    // 皮肤、Elo、API 密钥
+    sqlx::query("UPDATE tank_skins  SET agent_name = $1 WHERE user_id = $2 AND agent_name = $3")
+        .bind(new_name).bind(user_id).bind(&old_name).execute(&mut *tx).await?;
+    sqlx::query("UPDATE elo_ratings SET agent_name = $1 WHERE user_id = $2 AND agent_name = $3")
+        .bind(new_name).bind(user_id).bind(&old_name).execute(&mut *tx).await?;
+    sqlx::query("UPDATE api_keys    SET name = $1       WHERE user_id = $2 AND name = $3")
+        .bind(new_name).bind(user_id).bind(&old_name).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Some(true))
+}
+
 pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<TankDetail>, sqlx::Error> {
     use sqlx::Row;
 
