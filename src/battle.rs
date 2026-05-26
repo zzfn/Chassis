@@ -559,17 +559,31 @@ impl ArenaEngine {
                 final_tick = turn + 1;
                 timed_out = false;
                 if alive.is_empty() {
-                    // 同归于尽：取得分/HP 最高者
-                    if let Some(t) = self.agents.iter().map(|(t, _)| t)
-                        .max_by_key(|t| (t.score, t.hp))
-                    {
+                    // 同归于尽：先比分数；分数相同则比 JS 平均耗时（越低越好）
+                    let max_score = self.agents.iter().map(|(t, _)| t.score).max().unwrap_or(0);
+                    let top: Vec<(usize, u64)> = self.agents.iter().enumerate()
+                        .filter(|(_, (t, _))| t.score == max_score)
+                        .map(|(i, (_, sb))| (i, sb.stats().avg_exec_us))
+                        .collect();
+                    if top.len() == 1 {
+                        let t = &self.agents[top[0].0].0;
                         winner       = t.name.clone();
                         winner_label = format!("{} (同归于尽·最高分)", t.name);
                         winner_team  = None;
                     } else {
-                        winner       = "无".into();
-                        winner_label = "无".into();
-                        winner_team  = None;
+                        // 分数相同，取 JS 耗时最短者
+                        let best = top.iter().min_by_key(|(_, us)| us).unwrap();
+                        let all_same = top.iter().all(|(_, us)| *us == best.1);
+                        if all_same {
+                            winner       = "无".into();
+                            winner_label = "平局 (同归于尽·分数与效率均相同)".into();
+                            winner_team  = None;
+                        } else {
+                            let t = &self.agents[best.0].0;
+                            winner       = t.name.clone();
+                            winner_label = format!("{} (同归于尽·JS效率更高)", t.name);
+                            winner_team  = None;
+                        }
                     }
                 } else {
                     // 取存活队伍中得分/HP 最高者作为代表
