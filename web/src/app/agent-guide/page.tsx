@@ -241,13 +241,13 @@ function onIdle(me, enemy, game) {
             </thead>
             <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/30">
               {[
-                ["🛡 Shield",   "me.shield()",        "32", "激活护盾（3 帧有效窗口），吸收首发子弹后立即破盾；状态：me.status.shielded"],
+                ["🛡 Shield",   "me.shield()",        "32", "可抵挡 1 发子弹（3 帧有效窗口），命中即破盾；状态：me.status.shielded"],
                 ["❄ Freeze",   "me.freeze()",        "34", "冻结最近敌人 2 帧（命令保留但不执行）；状态：enemy.status.frozen"],
                 ["⚡ Stun",    "me.stun()",          "31", "眩晕最近敌人 6 帧（命令被随机替换为移动/转向）；状态：enemy.status.stunned"],
-                ["🔥 Overload","me.overload()",      "32", "下次开炮发射双弹，命中后自动清除；状态：me.status.overloaded"],
-                ["👁 Cloak",   "me.cloak()",         "32", "隐身 8 帧，从敌方 enemy 传感器中消失；状态：me.status.cloaked"],
-                ["🧪 Poison",  "me.poison()",        "34", "中毒最近敌人 4 帧（交替跳帧，行动效率降低）；状态：enemy.status.poisoned"],
-                ["🌀 Teleport","me.teleport(x, y)",  "40", "瞬移至 tile(x,y)；落点距敌曼哈顿距离 ≤ 4 时触发 2 帧封炮"],
+                ["🔥 Overload","me.overload()",      "32", "下次开炮发射双弹，造成双倍伤害；状态：me.status.overloaded"],
+                ["👁 Cloak",   "me.cloak()",         "32", "隐身 8 帧，从敌方传感器中消失；状态：me.status.cloaked"],
+                ["🧪 Poison",  "me.poison()",        "34", "使最近敌人中毒 4 帧（每隔帧跳过命令）；状态：enemy.status.poisoned"],
+                ["🌀 Teleport","me.teleport(x, y)",  "40", "瞬移至 tile(x,y)；落点距敌 ≤ 4 格时触发 2 帧锁炮"],
                 ["🚀 Boost",   "me.boost()",         "31", "加速 6 帧，每次 go() 移动 2 格；状态：me.status.boosted"],
               ].map(([skill, method, cd, desc]) => (
                 <tr key={skill}>

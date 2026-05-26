@@ -61,14 +61,14 @@ interface TankSkin {
 }
 
 const SKILLS = [
-  { key: "shield",   emoji: "🛡", name: "护盾",   desc: "激活后获得护盾，可抵挡 1 发子弹，持续 4 帧",     cd: 32, color: "#00F5D4" },
-  { key: "freeze",   emoji: "❄",  name: "冻结",   desc: "冻结最近敌人，使其跳过接下来 2 帧的命令",       cd: 34, color: "#67e8f9" },
-  { key: "stun",     emoji: "⚡", name: "眩晕",   desc: "眩晕敌人 6 帧，期间其命令随机执行",            cd: 31, color: "#FFE600" },
-  { key: "overload", emoji: "🔥", name: "过载",   desc: "下次开炮时发射双弹，造成双倍伤害",              cd: 32, color: "#FF6B35" },
-  { key: "cloak",    emoji: "👁", name: "隐身",   desc: "隐身 8 帧，从敌方传感器中消失（草丛额外加成）", cd: 32, color: "#7B2FFF" },
-  { key: "poison",   emoji: "🧪", name: "中毒",   desc: "对最近敌人施毒 4 帧，中毒期间每隔帧跳过命令",   cd: 34, color: "#22c55e" },
-  { key: "teleport", emoji: "🌀", name: "传送",   desc: "瞬间传送到指定坐标（需在代码中传入目标位置）",  cd: 40, color: "#FF3AF2" },
-  { key: "boost",    emoji: "🚀", name: "加速",   desc: "加速 6 帧，每次移动命令推进 2 格",             cd: 31, color: "#fbbf24" },
+  { key: "shield",   emoji: "🛡", name: "护盾",   desc: "激活护盾，可抵挡 1 发子弹（3 帧有效窗口）",           cd: 32, color: "#00F5D4" },
+  { key: "freeze",   emoji: "❄",  name: "冻结",   desc: "冻结最近敌人 2 帧，使其命令暂停出队",                 cd: 34, color: "#67e8f9" },
+  { key: "stun",     emoji: "⚡", name: "眩晕",   desc: "眩晕最近敌人 6 帧，使其命令被随机替换为移动/转向",     cd: 31, color: "#FFE600" },
+  { key: "overload", emoji: "🔥", name: "过载",   desc: "下次开炮发射双弹，造成双倍伤害",                     cd: 32, color: "#FF6B35" },
+  { key: "cloak",    emoji: "👁", name: "隐身",   desc: "隐身 8 帧，从敌方传感器中消失",                     cd: 32, color: "#7B2FFF" },
+  { key: "poison",   emoji: "🧪", name: "中毒",   desc: "使最近敌人中毒 4 帧，行动效率降低（每隔帧跳过命令）", cd: 34, color: "#22c55e" },
+  { key: "teleport", emoji: "🌀", name: "传送",   desc: "瞬移至指定坐标；落点距敌 ≤ 4 格时锁炮 2 帧",        cd: 40, color: "#FF3AF2" },
+  { key: "boost",    emoji: "🚀", name: "加速",   desc: "加速 6 帧，每次移动前进 2 格",                     cd: 31, color: "#fbbf24" },
 ] as const
 
 const BULLET_STYLES = [

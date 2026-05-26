@@ -16,49 +16,49 @@ fn skill_info(skill: &str) -> serde_json::Value {
     match skill {
         "shield" => serde_json::json!({
             "id": "shield",
-            "description": "激活护盾，持续 3 回合内免疫子弹伤害",
+            "description": "激活护盾，可抵挡 1 发子弹（3 帧有效窗口）",
             "cooldown": 32,
             "duration": 3,
         }),
         "freeze" => serde_json::json!({
             "id": "freeze",
-            "description": "冻结最近的敌方坦克，使其无法行动 2 回合",
+            "description": "冻结最近敌人 2 帧，使其命令暂停出队",
             "cooldown": 34,
             "duration": 2,
         }),
         "stun" => serde_json::json!({
             "id": "stun",
-            "description": "眩晕最近的敌方坦克，使其无法行动 6 回合",
+            "description": "眩晕最近敌人 6 帧，使其命令被随机替换为移动/转向",
             "cooldown": 31,
             "duration": 6,
         }),
         "overload" => serde_json::json!({
             "id": "overload",
-            "description": "下次开火时同时射出两发子弹，造成双倍伤害",
+            "description": "下次开炮发射双弹，造成双倍伤害",
             "cooldown": 32,
             "duration": 1,
         }),
         "cloak" => serde_json::json!({
             "id": "cloak",
-            "description": "进入隐身状态 8 回合，敌方无法感知你的位置",
+            "description": "隐身 8 帧，从敌方传感器中消失",
             "cooldown": 32,
             "duration": 8,
         }),
         "poison" => serde_json::json!({
             "id": "poison",
-            "description": "使最近的敌方坦克中毒 4 回合，行动效率降低（交替跳帧）",
+            "description": "使最近敌人中毒 4 帧，行动效率降低（每隔帧跳过命令）",
             "cooldown": 34,
             "duration": 4,
         }),
         "teleport" => serde_json::json!({
             "id": "teleport",
-            "description": "瞬间传送至指定坐标，若落点邻近敌人则锁定射击 2 回合",
+            "description": "瞬移至指定坐标，落点距敌 ≤ 4 格时锁炮 2 帧",
             "cooldown": 40,
             "duration": null,
         }),
         "boost" => serde_json::json!({
             "id": "boost",
-            "description": "激活加速，持续 6 回合内每次移动前进 2 格",
+            "description": "加速 6 帧，每次移动前进 2 格",
             "cooldown": 31,
             "duration": 6,
         }),
@@ -195,7 +195,13 @@ async fn agent_submit_code(
         return json_err(400, "代码超过 64KB 上限");
     }
 
-    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref(), "shield", notes.as_deref()).await {
+    // 继承已有技能，避免每次提交代码都重置技能
+    let current_skill = match db::get_latest_agent_by_name(pool, auth.user_id, &name).await {
+        Ok(Some(a)) => a.skill_type,
+        _           => "shield".to_string(),
+    };
+
+    match db::create_agent(pool, auth.user_id, &name, &code, submitted_by.as_deref(), &current_skill, notes.as_deref()).await {
         Ok(id) => {
             let version = db::get_agent_version_number(pool, auth.user_id, &name, id).await.unwrap_or(1);
             axum::Json(serde_json::json!({
