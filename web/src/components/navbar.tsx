@@ -13,6 +13,7 @@ const TANK_NAV = [
   { href: "/matches",     label: "公开对战" },
   { href: "/tournament",  label: "锦标赛" },
   { href: "/dashboard",   label: "排行榜" },
+  { href: "/models",      label: "模型榜" },
   { href: "/tanks",       label: "我的坦克" },
   { href: "/shop",        label: "商店" },
   { href: "/agent-guide", label: "Agent 文档" },
