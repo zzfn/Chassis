@@ -150,14 +150,33 @@ function TankAvatar({ name, svg }: { name: string; svg?: string }) {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [myUsername, setMyUsername] = useState("")
-  const [players,    setPlayers]    = useState<PlayerEntry[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState<string | null>(null)
-  const [period,     setPeriod]     = useState<Period>("all")
-  const [sortBy,     setSortBy]     = useState<SortKey>("elo")
+  const [myUsername,    setMyUsername]    = useState("")
+  const [players,       setPlayers]       = useState<PlayerEntry[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState<string | null>(null)
+  const [period,        setPeriod]        = useState<Period>("all")
+  const [sortBy,        setSortBy]        = useState<SortKey>("elo")
+  const [challengingId, setChallengingId] = useState<string | null>(null)
 
   useEffect(() => { setMyUsername(getCookie("username") ?? "") }, [])
+
+  async function handleChallenge(opponentAgentId: string) {
+    const token = getCookie("token")
+    if (!token) { router.push("/login"); return }
+    setChallengingId(opponentAgentId)
+    setError(null)
+    try {
+      const res  = await fetch(`${apiBase}/api/challenge/${opponentAgentId}`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "挑战失败")
+      router.push(`/replay/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "挑战失败")
+      setChallengingId(null)
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -418,15 +437,18 @@ export default function DashboardPage() {
                     </Link>
                     {!isMe && (
                       <button
-                        onClick={() => router.push(`/race?opponent=${p.agent_id}`)}
-                        className="flex items-center gap-1 rounded-full border-4 border-[#FFE600] px-3 py-1 text-xs font-black uppercase tracking-wide text-white transition-all duration-200 hover:scale-105 active:scale-95"
+                        onClick={() => handleChallenge(p.agent_id)}
+                        disabled={challengingId === p.agent_id}
+                        className="flex items-center gap-1 rounded-full border-4 border-[#FFE600] px-3 py-1 text-xs font-black uppercase tracking-wide text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{
                           background: "linear-gradient(135deg, #FF3AF2, #7B2FFF)",
                           boxShadow:  "0 0 10px rgba(255,58,242,0.3), 2px 2px 0 #FFE600",
                         }}
                       >
-                        <Swords className="size-3" />
-                        挑战
+                        {challengingId === p.agent_id
+                          ? <Loader2 className="size-3 animate-spin" />
+                          : <Swords className="size-3" />}
+                        {challengingId === p.agent_id ? "对战中" : "挑战"}
                       </button>
                     )}
                   </div>

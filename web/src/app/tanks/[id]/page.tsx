@@ -324,8 +324,29 @@ export default function TankDetailPage() {
 
   // 分享弹窗
   const [shareOpen, setShareOpen] = useState(false)
+  const [challenging, setChallenging] = useState(false)
+  const [challengeError, setChallengeError] = useState<string | null>(null)
 
   const isOwner = tank ? tank.owner === (getCookie("username") ?? "") : false
+
+  async function handleChallenge() {
+    if (!tank) return
+    const token = getCookie("token")
+    if (!token) { router.push("/login"); return }
+    setChallenging(true)
+    setChallengeError(null)
+    try {
+      const res  = await fetch(`${apiBase}/api/challenge/${tank.agent_id}`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "挑战失败")
+      router.push(`/replay/${data.id}`)
+    } catch (err) {
+      setChallengeError(err instanceof Error ? err.message : "挑战失败")
+      setChallenging(false)
+    }
+  }
 
   async function loadTank() {
     const res = await fetch(`${apiBase}/api/tanks/${id}`)
@@ -652,10 +673,13 @@ export default function TankDetailPage() {
               {/* 操作按钮 */}
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-                  className="flex w-full sm:w-auto items-center justify-center gap-2 border-4 border-black bg-[#FF6B6B] px-6 py-3 text-sm font-black uppercase text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[8px_8px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+                  onClick={handleChallenge}
+                  disabled={challenging}
+                  className="flex w-full sm:w-auto items-center justify-center gap-2 border-4 border-black bg-[#FF6B6B] px-6 py-3 text-sm font-black uppercase text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[8px_8px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-[6px_6px_0px_0px_#000]"
                 >
-                  <Swords className="size-4 stroke-[3px]" /> CHALLENGE 挑战此坦克 →
+                  {challenging
+                    ? <><Loader2 className="size-4 stroke-[3px] animate-spin" /> 对战中…</>
+                    : <><Swords className="size-4 stroke-[3px]" /> CHALLENGE 挑战此坦克 →</>}
                 </button>
                 <button
                   onClick={() => setShareOpen(true)}
@@ -664,6 +688,11 @@ export default function TankDetailPage() {
                   <Share2 className="size-4 stroke-[3px]" /> 分享
                 </button>
               </div>
+              {challengeError && (
+                <p className="mt-2 border-4 border-[#FF6B6B] bg-[#FF6B6B]/10 px-3 py-2 text-sm font-black text-[#FF6B6B]">
+                  {challengeError}
+                </p>
+              )}
             </div>
 
             {/* 右侧：大头像 + rank badge */}
@@ -760,10 +789,13 @@ export default function TankDetailPage() {
               <Share2 className="size-4 stroke-[3px]" /> 分享坦克
             </button>
             <button
-              onClick={() => router.push(`/race?tank=${tank.agent_id}`)}
-              className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-3 py-1.5 text-sm font-black text-white uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+              onClick={handleChallenge}
+              disabled={challenging}
+              className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-3 py-1.5 text-sm font-black text-white uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Swords className="size-4 stroke-[3px]" /> 进入竞技场
+              {challenging
+                ? <><Loader2 className="size-4 animate-spin" /> 对战中…</>
+                : <><Swords className="size-4 stroke-[3px]" /> 挑战此坦克</>}
             </button>
           </div>
         </div>
