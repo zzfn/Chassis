@@ -179,11 +179,16 @@ function TankAvatar({ name, skin, size = "md" }: { name: string; skin?: TankSkin
 
 // 每种样式的颜色和辉光配置（与 BULLET_STYLES 对应）
 const BULLET_PREVIEW_CFG: Record<string, { fill: string; glow?: string; r: number; shape: string }> = {
-  default: { fill: "#fef08a", r: 3.5, shape: "circle" },
-  fire:    { fill: "#ff5500", glow: "#ff220055", r: 4.5, shape: "circle" },
-  plasma:  { fill: "#22d3ee", glow: "#0891b255", r: 4,   shape: "circle" },
-  void:    { fill: "#a855f7", glow: "#6d28d955", r: 4.5, shape: "diamond" },
-  gold:    { fill: "#fbbf24", r: 4.5, shape: "star" },
+  default:   { fill: "#fef08a", r: 3.5, shape: "circle"    },
+  fire:      { fill: "#ff5500", glow: "#ff220055", r: 4.5, shape: "circle"    },
+  plasma:    { fill: "#22d3ee", glow: "#0891b255", r: 4,   shape: "circle"    },
+  void:      { fill: "#a855f7", glow: "#6d28d955", r: 4.5, shape: "diamond"   },
+  gold:      { fill: "#fbbf24", r: 4.5, shape: "star"      },
+  ice:       { fill: "#bae6fd", glow: "#7dd3fc55", r: 4,   shape: "hexagon"   },
+  lightning: { fill: "#fef9c3", glow: "#fef08a55", r: 4.5, shape: "lightning" },
+  toxic:     { fill: "#4ade80", glow: "#22c55e55", r: 4,   shape: "orbit"     },
+  sakura:    { fill: "#f472b6", glow: "#ec489955", r: 4,   shape: "sakura"    },
+  rainbow:   { fill: "#ff0080", r: 4.5, shape: "rainbow"   },
 }
 
 function BulletFirePreview({ bulletStyle, skinSvg }: { bulletStyle: string; skinSvg?: string }) {
@@ -206,6 +211,40 @@ function BulletFirePreview({ bulletStyle, skinSvg }: { bulletStyle: string; skin
         pts.push(`${(Math.cos(a) * rad).toFixed(2)},${(Math.sin(a) * rad).toFixed(2)}`)
       }
       return <polygon points={pts.join(" ")} fill={fill} />
+    }
+    if (shape === "hexagon") {
+      const pts = Array.from({ length: 6 }, (_, i) => {
+        const a = (i * Math.PI) / 3
+        return `${(Math.cos(a) * r).toFixed(2)},${(Math.sin(a) * r).toFixed(2)}`
+      }).join(" ")
+      return <polygon points={pts} fill={fill} />
+    }
+    if (shape === "lightning") {
+      const s = r / 8
+      return <path d={`M${3*s},${-8*s} L${-2*s},0 L${s},0 L${-3*s},${8*s} L${2*s},0 L${-s},0 Z`} fill={fill} />
+    }
+    if (shape === "orbit") {
+      return (
+        <g>
+          <circle cx="0" cy="0" r={r * 0.75} fill={fill} />
+          <circle cx={r * 1.6}  cy="0"        r={r * 0.38} fill={fill} opacity="0.75" />
+          <circle cx={-r * 0.8} cy={r * 1.4}  r={r * 0.38} fill={fill} opacity="0.75" />
+          <circle cx={-r * 0.8} cy={-r * 1.4} r={r * 0.38} fill={fill} opacity="0.75" />
+        </g>
+      )
+    }
+    if (shape === "sakura") {
+      const s = r / 4
+      return <path d={`M0,${-8*s} Q${5*s},${-5*s} ${8*s},0 Q${5*s},${5*s} 0,${8*s} Q${-5*s},${5*s} ${-8*s},0 Q${-5*s},${-5*s} 0,${-8*s} Z`} fill={fill} />
+    }
+    if (shape === "rainbow") {
+      return (
+        <circle cx="0" cy="0" r={r}>
+          <animate attributeName="fill"
+            values="#ff0080;#ff8c00;#ffe600;#00f5d4;#7b2fff;#ff3af2;#ff0080"
+            dur="1.2s" repeatCount="indefinite" />
+        </circle>
+      )
     }
     return <circle cx="0" cy="0" r={r} fill={fill} />
   })()
@@ -1546,25 +1585,21 @@ ${guideUrl}
                           {NAME_COLOR_STYLES.filter(s => ownedNameColors.has(s.value)).map(s => {
                             const active = (skin.name_color ?? "white") === s.value
                             const isGradient = "gradient" in s && s.gradient
-                            const nameStyle: React.CSSProperties = isGradient
-                              ? {
-                                  background:           "linear-gradient(90deg, #7B2FFF, #FF3AF2, #00F5D4)",
-                                  WebkitBackgroundClip: "text",
-                                  WebkitTextFillColor:  "transparent",
-                                  backgroundClip:       "text",
-                                }
-                              : { color: s.color }
+                            const swatchStyle: React.CSSProperties = isGradient
+                              ? { background: "linear-gradient(135deg, #7B2FFF, #FF3AF2, #00F5D4)" }
+                              : { background: s.color, border: s.color === "#ffffff" ? "2px solid #d4d4d4" : undefined }
                             return (
                               <button
                                 key={s.value}
                                 onClick={() => setSkin(prev => ({ ...prev, name_color: s.value }))}
-                                className={`flex flex-col items-center gap-1 border-4 border-black px-3 py-2 transition-colors ${
+                                className={`flex items-center gap-2 border-4 border-black px-3 py-2 transition-colors ${
                                   active
                                     ? "bg-[#FFD93D] shadow-[3px_3px_0px_0px_#000]"
                                     : "bg-white hover:bg-[#FFF9C4] shadow-[2px_2px_0px_0px_#000]"
                                 }`}
                               >
-                                <span className="text-sm font-black" style={nameStyle}>{s.label}</span>
+                                <span className="size-4 shrink-0 rounded-full" style={swatchStyle} />
+                                <span className="text-xs font-black text-black">{s.label}</span>
                               </button>
                             )
                           })}
