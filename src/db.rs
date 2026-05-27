@@ -1094,7 +1094,7 @@ pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_nam
                 COALESCE((SELECT elo FROM elo_ratings WHERE user_id = latest.user_id AND agent_name = latest.name), 1000.0)
                 - COALESCE((SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2), 1000.0)
             )
-            + 150.0 * LEAST(
+            + 50.0 * LEAST(
                 (SELECT COUNT(*) FROM battles
                  WHERE created_at > NOW() - INTERVAL '24 hours'
                    AND (
