@@ -8,6 +8,15 @@ INSTALL_DIR="/opt/deeptank"
 BIN_PATH="/usr/local/bin/deeptank"
 SERVICE="deeptank-engine"
 
+# ── 参数解析（支持 --version v0.2.5 或环境变量 VERSION=v0.2.5）────────────────
+PINNED_VERSION="${VERSION:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version|-v) PINNED_VERSION="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
 # ── 颜色输出 ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[deeptank]${NC} $*"; }
@@ -66,11 +75,16 @@ case "$(uname -m)" in
 esac
 
 # ── 获取最新 Release ──────────────────────────────────────────────────────────
-info "获取最新版本信息..."
-RELEASE_JSON="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest")" \
-  || die "无法访问 GitHub API，请检查网络"
-TAG="$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
-[ -n "$TAG" ] || die "未找到任何 Release，请先推送 tag（git tag v1.0.0 && git push --tags）"
+if [ -n "$PINNED_VERSION" ]; then
+  TAG="$PINNED_VERSION"
+  info "使用指定版本：$TAG"
+else
+  info "获取最新版本信息..."
+  RELEASE_JSON="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest")" \
+    || die "无法访问 GitHub API，请检查网络"
+  TAG="$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+  [ -n "$TAG" ] || die "未找到任何 Release，请先推送 tag（git tag v1.0.0 && git push --tags）"
+fi
 
 # ── 检测当前版本，提示操作选项 ───────────────────────────────────────────────
 CURRENT=""
