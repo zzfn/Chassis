@@ -690,8 +690,14 @@ async fn get_leaderboard(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn get_model_leaderboard(State(state): State<AppState>) -> impl IntoResponse {
     match db::list_model_leaderboard(&state.pool).await {
-        Ok(entries) => axum::Json(entries).into_response(),
-        Err(e)      => json_err(500, &e.to_string()),
+        Ok(entries) => {
+            eprintln!("[model_leaderboard] ok: {} 条", entries.len());
+            axum::Json(entries).into_response()
+        }
+        Err(e) => {
+            eprintln!("[model_leaderboard] 查询失败: {e}");
+            json_err(500, &e.to_string())
+        }
     }
 }
 
