@@ -1193,20 +1193,29 @@ pub struct ModelEntry {
 pub async fn list_model_leaderboard(pool: &PgPool) -> Result<Vec<ModelEntry>, sqlx::Error> {
     use sqlx::Row;
     let rows = sqlx::query(r#"
-        SELECT
-            la.submitted_by                                              AS model,
-            COUNT(DISTINCT la.user_id::text || '|' || la.name)          AS tank_count,
-            COUNT(DISTINCT la.user_id)                                   AS user_count,
-            COALESCE(AVG(er.elo), 1000.0)                               AS avg_elo,
-            COALESCE(SUM(er.elo), 0)                                    AS total_elo,
-            COALESCE(SUM(pvp.pvp_wins), 0)::BIGINT                     AS total_wins,
-            COALESCE(SUM(pvp.pvp_battles), 0)::BIGINT                  AS total_battles
-        FROM (
-            SELECT DISTINCT ON (user_id, name) id, user_id, name, submitted_by
+        WITH normalized AS (
+            SELECT DISTINCT ON (user_id, name) id, user_id, name,
+                CASE
+                    WHEN LOWER(submitted_by) LIKE '%claude%'                                    THEN 'Claude'
+                    WHEN LOWER(submitted_by) LIKE '%chatgpt%' OR LOWER(submitted_by) LIKE '%gpt%' THEN 'GPT'
+                    WHEN LOWER(submitted_by) LIKE '%copilot%'                                   THEN 'Copilot'
+                    WHEN LOWER(submitted_by) LIKE '%gemini%'                                    THEN 'Gemini'
+                    WHEN LOWER(submitted_by) LIKE '%cursor%' OR LOWER(submitted_by) LIKE '%composer%' THEN 'Cursor'
+                    ELSE submitted_by
+                END AS model
             FROM agents
             WHERE submitted_by IS NOT NULL AND submitted_by != ''
             ORDER BY user_id, name, created_at DESC
-        ) la
+        )
+        SELECT
+            model,
+            COUNT(DISTINCT user_id::text || '|' || name)  AS tank_count,
+            COUNT(DISTINCT user_id)                        AS user_count,
+            COALESCE(AVG(er.elo), 1000.0)                 AS avg_elo,
+            COALESCE(SUM(er.elo), 0)                      AS total_elo,
+            COALESCE(SUM(pvp.pvp_wins), 0)::BIGINT        AS total_wins,
+            COALESCE(SUM(pvp.pvp_battles), 0)::BIGINT     AS total_battles
+        FROM normalized la
         LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
         LEFT JOIN LATERAL (
             SELECT
@@ -1220,7 +1229,7 @@ pub async fn list_model_leaderboard(pool: &PgPool) -> Result<Vec<ModelEntry>, sq
                 (b.opponent_id   = la.user_id AND b.opponent   = la.name)
               )
         ) pvp ON true
-        GROUP BY la.submitted_by
+        GROUP BY model
         ORDER BY avg_elo DESC
     "#).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| ModelEntry {
