@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
-import { Loader2, Swords, Clock, ChevronRight } from "lucide-react"
+import { Loader2, Swords, ChevronRight } from "lucide-react"
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002"
 const PAGE_SIZE = 30
@@ -20,13 +20,6 @@ interface BattleEntry {
   created_at: string
 }
 
-function timeAgo(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60)   return `${Math.floor(diff)}秒前`
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-  return `${Math.floor(diff / 86400)}天前`
-}
 
 function TankAvatar({ name, svg, size = 40 }: { name: string; svg?: string | null; size?: number }) {
   const hue = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
@@ -97,11 +90,6 @@ function BattleRow({ b }: { b: BattleEntry }) {
         </div>
       </div>
 
-      {/* 时间 + 箭头 */}
-      <div className="hidden shrink-0 items-center gap-1.5 text-xs text-white/30 sm:flex">
-        <Clock className="size-3" />
-        <span>{timeAgo(b.created_at)}</span>
-      </div>
       <ChevronRight className="size-4 shrink-0 text-white/20 transition-colors group-hover:text-[#FF3AF2]/60" />
     </Link>
   )
