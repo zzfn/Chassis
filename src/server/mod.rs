@@ -28,6 +28,7 @@ pub(crate) struct AppState {
     pub(crate) app_url:        String,
     pub(crate) from_email:     String,
     pub(crate) battle_sem:     Arc<Semaphore>,
+    pub(crate) slow_queries:   db::SlowQueryLog,
 }
 
 // ── 共享辅助 ─────────────────────────────────────────────────────────────────
@@ -272,7 +273,7 @@ pub(crate) async fn send_verification_email(
 // ── 全局统计接口 ─────────────────────────────────────────────────────────────
 
 async fn handle_stats(State(state): State<AppState>) -> axum::response::Response {
-    match db::get_platform_stats(&state.pool).await {
+    match db::get_platform_stats(&state.pool, &state.slow_queries).await {
         Ok(stats) => axum::Json(stats).into_response(),
         Err(e)    => json_err(500, &e.to_string()),
     }
@@ -348,7 +349,8 @@ pub async fn serve(port: u16) {
     let from_email     = std::env::var("FROM_EMAIL").unwrap_or_else(|_| "noreply@deeptank.xyz".to_string());
     let concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
     let battle_sem  = Arc::new(Semaphore::new(concurrency));
-    let state = AppState { pool, jwt_secret, resend_api_key, app_url, from_email, battle_sem };
+    let slow_queries = db::new_slow_query_log();
+    let state = AppState { pool, jwt_secret, resend_api_key, app_url, from_email, battle_sem, slow_queries };
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)

@@ -22,6 +22,14 @@ interface EloDistribution {
   gold: number
   platinum: number
   diamond: number
+  master: number
+  grandmaster: number
+}
+
+interface SlowQueryEntry {
+  name:        string
+  duration_ms: number
+  ts:          number
 }
 
 interface PlatformStats {
@@ -32,15 +40,18 @@ interface PlatformStats {
   battles_today: number
   top_players: TopPlayer[]
   elo_distribution: EloDistribution
+  slow_queries: SlowQueryEntry[]
 }
 
 // 段位配置
 const TIER_CONFIG = [
-  { key: "bronze",   label: "青铜", color: "#c2874f" },
-  { key: "silver",   label: "白银", color: "#a1a1aa" },
-  { key: "gold",     label: "黄金", color: "#FFE600" },
-  { key: "platinum", label: "铂金", color: "#00F5D4" },
-  { key: "diamond",  label: "钻石", color: "#FF3AF2" },
+  { key: "bronze",      label: "青铜", color: "#c2874f" },
+  { key: "silver",      label: "白银", color: "#a1a1aa" },
+  { key: "gold",        label: "黄金", color: "#FFE600" },
+  { key: "platinum",    label: "铂金", color: "#00F5D4" },
+  { key: "diamond",     label: "钻石", color: "#FF3AF2" },
+  { key: "master",      label: "大师", color: "#c084fc" },
+  { key: "grandmaster", label: "王者", color: "#f43f5e" },
 ]
 
 // 单个统计大数字卡片
@@ -323,6 +334,51 @@ export default function StatsPage() {
                 )}
               </div>
             </motion.section>
+
+            {/* ── 慢查询日志 ── */}
+            {stats.slow_queries?.length > 0 && (
+              <motion.section
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.6 }}
+                className="overflow-hidden rounded-3xl"
+                style={{
+                  border:    "4px solid #f43f5e",
+                  boxShadow: "6px 6px 0 #c084fc",
+                }}
+              >
+                <div
+                  className="px-6 py-4"
+                  style={{ background: "#1A0D2E", borderBottom: "4px solid #f43f5e" }}
+                >
+                  <p className="text-xs font-black uppercase tracking-widest text-[#f43f5e]">
+                    // slow queries (&gt;50ms)
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-white">慢查询日志</h2>
+                </div>
+                <div className="bg-[#0D0D1A] font-mono text-sm">
+                  {stats.slow_queries.map((q, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-4 border-b border-white/5 px-6 py-3 last:border-b-0"
+                    >
+                      <span
+                        className="w-16 shrink-0 text-right font-black tabular-nums"
+                        style={{
+                          color: q.duration_ms >= 500 ? "#f43f5e" : q.duration_ms >= 200 ? "#fbbf24" : "#a1a1aa",
+                        }}
+                      >
+                        {q.duration_ms}ms
+                      </span>
+                      <span className="flex-1 text-white/70">{q.name}</span>
+                      <span className="text-xs text-white/30">
+                        {new Date(q.ts * 1000).toLocaleTimeString("zh-CN")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </motion.section>
+            )}
           </>
         )}
       </div>

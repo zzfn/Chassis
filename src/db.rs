@@ -3,9 +3,41 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::PgPool;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use crate::battle::BattleResult;
+
+// ── 慢查询日志 ────────────────────────────────────────────────────────────────
+
+/// 单条慢查询记录
+#[derive(Clone, Debug, Serialize)]
+pub struct SlowQueryEntry {
+    pub name:        String,
+    pub duration_ms: u64,
+    pub ts:          i64,
+}
+
+/// 全局共享的慢查询环形缓冲（最多保留 100 条）
+pub type SlowQueryLog = Arc<Mutex<VecDeque<SlowQueryEntry>>>;
+
+pub fn new_slow_query_log() -> SlowQueryLog {
+    Arc::new(Mutex::new(VecDeque::new()))
+}
+
+/// 若耗时超过 `SLOW_MS` 阈值则写入缓冲
+const SLOW_MS: u64 = 50;
+
+pub fn record_slow(log: &SlowQueryLog, name: &str, start: std::time::Instant) {
+    let ms = start.elapsed().as_millis() as u64;
+    if ms >= SLOW_MS {
+        if let Ok(mut q) = log.lock() {
+            q.push_front(SlowQueryEntry { name: name.to_string(), duration_ms: ms, ts: Utc::now().timestamp() });
+            if q.len() > 100 { q.pop_back(); }
+        }
+    }
+}
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPool::connect(database_url).await?;
@@ -1586,6 +1618,7 @@ pub struct PlatformStats {
     pub battles_today:    i64,
     pub top_players:      Vec<TopPlayer>,
     pub elo_distribution: EloDistribution,
+    pub slow_queries:     Vec<SlowQueryEntry>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1597,17 +1630,20 @@ pub struct TopPlayer {
 
 #[derive(Debug, Serialize)]
 pub struct EloDistribution {
-    pub bronze:   i64,
-    pub silver:   i64,
-    pub gold:     i64,
-    pub platinum: i64,
-    pub diamond:  i64,
+    pub bronze:      i64,
+    pub silver:      i64,
+    pub gold:        i64,
+    pub platinum:    i64,
+    pub diamond:     i64,
+    pub master:      i64,
+    pub grandmaster: i64,
 }
 
-pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Error> {
+pub async fn get_platform_stats(pool: &PgPool, slow_log: &SlowQueryLog) -> Result<PlatformStats, sqlx::Error> {
     use sqlx::Row;
 
     // 聚合基础计数
+    let t = std::time::Instant::now();
     let counts = sqlx::query(r#"
         SELECT
             (SELECT COUNT(*) FROM users)                                    AS total_users,
@@ -1616,6 +1652,7 @@ pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Er
             (SELECT COUNT(*) FROM battles WHERE challenger_id IS NOT NULL AND opponent_id IS NOT NULL) AS total_pvp_battles,
             (SELECT COUNT(*) FROM battles WHERE created_at >= NOW() - INTERVAL '1 day') AS battles_today
     "#).fetch_one(pool).await?;
+    record_slow(slow_log, "stats.counts", t);
 
     let total_users:       i64 = counts.get("total_users");
     let total_agents:      i64 = counts.get("total_agents");
@@ -1624,6 +1661,7 @@ pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Er
     let battles_today:     i64 = counts.get("battles_today");
 
     // Top 5 玩家（按 Elo 最高）
+    let t = std::time::Instant::now();
     let top_rows = sqlx::query(r#"
         SELECT u.username, er.elo,
                COUNT(b.id) AS pvp_battles
@@ -1636,29 +1674,38 @@ pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Er
         ORDER BY er.elo DESC
         LIMIT 5
     "#).fetch_all(pool).await?;
+    record_slow(slow_log, "stats.top_players", t);
     let top_players: Vec<TopPlayer> = top_rows.iter().map(|r| TopPlayer {
         username:    r.get("username"),
         elo:         r.get("elo"),
         pvp_battles: r.get("pvp_battles"),
     }).collect();
 
-    // Elo 分布：bronze<1100, silver<1300, gold<1500, platinum<1800, diamond>=1800
+    // Elo 分布：bronze<1100, silver<1300, gold<1500, platinum<1800, diamond<2100, master<2500, grandmaster>=2500
+    let t = std::time::Instant::now();
     let dist_row = sqlx::query(r#"
         SELECT
             COUNT(*) FILTER (WHERE elo <  1100) AS bronze,
             COUNT(*) FILTER (WHERE elo >= 1100 AND elo < 1300) AS silver,
             COUNT(*) FILTER (WHERE elo >= 1300 AND elo < 1500) AS gold,
             COUNT(*) FILTER (WHERE elo >= 1500 AND elo < 1800) AS platinum,
-            COUNT(*) FILTER (WHERE elo >= 1800) AS diamond
+            COUNT(*) FILTER (WHERE elo >= 1800 AND elo < 2100) AS diamond,
+            COUNT(*) FILTER (WHERE elo >= 2100 AND elo < 2500) AS master,
+            COUNT(*) FILTER (WHERE elo >= 2500) AS grandmaster
         FROM elo_ratings
     "#).fetch_one(pool).await?;
+    record_slow(slow_log, "stats.elo_distribution", t);
     let elo_distribution = EloDistribution {
-        bronze:   dist_row.get("bronze"),
-        silver:   dist_row.get("silver"),
-        gold:     dist_row.get("gold"),
-        platinum: dist_row.get("platinum"),
-        diamond:  dist_row.get("diamond"),
+        bronze:      dist_row.get("bronze"),
+        silver:      dist_row.get("silver"),
+        gold:        dist_row.get("gold"),
+        platinum:    dist_row.get("platinum"),
+        diamond:     dist_row.get("diamond"),
+        master:      dist_row.get("master"),
+        grandmaster: dist_row.get("grandmaster"),
     };
+
+    let slow_queries = slow_log.lock().map(|q| q.iter().take(20).cloned().collect()).unwrap_or_default();
 
     Ok(PlatformStats {
         total_users,
@@ -1668,6 +1715,7 @@ pub async fn get_platform_stats(pool: &PgPool) -> Result<PlatformStats, sqlx::Er
         battles_today,
         top_players,
         elo_distribution,
+        slow_queries,
     })
 }
 
