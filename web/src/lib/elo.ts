@@ -10,8 +10,13 @@ function subTier(elo: number, min: number, step: number): number {
 
 export function getEloTier(elo: number, battles: number): EloTier {
   if (battles === 0) return { label: "新兵", color: "#71717a", border: "border-zinc-600" }
+  if (elo >= 2500)   return { label: "王者",  color: "#f43f5e", border: "border-rose-500/60" }
+  if (elo >= 2100) {
+    const n = subTier(elo, 2100, 80)
+    return { label: `大师${n}`, color: "#c084fc", border: "border-purple-500/60" }
+  }
   if (elo >= 1800) {
-    const n = Math.max(1, 6 - Math.floor((elo - 1800) / 60))
+    const n = subTier(elo, 1800, 60)
     return { label: `钻石${n}`, color: "#818cf8", border: "border-indigo-500/60" }
   }
   if (elo >= 1500) {
