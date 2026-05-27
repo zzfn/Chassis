@@ -901,7 +901,7 @@ function TanksContent() {
                       ⭐ 200 积分
                     </span>
                   </span>
-                ) : "创建坦克（免费）"}
+                ) : "创建坦克"}
               </button>
             </div>
           </motion.div>

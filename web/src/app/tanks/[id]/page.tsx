@@ -678,7 +678,7 @@ export default function TankDetailPage() {
                   className="flex w-full sm:w-auto items-center justify-center gap-2 border-4 border-black bg-[#FF6B6B] px-6 py-3 text-sm font-black uppercase text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[8px_8px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-[6px_6px_0px_0px_#000]"
                 >
                   {challenging
-                    ? <><Loader2 className="size-4 stroke-[3px] animate-spin" /> 对战中…</>
+                    ? <><Loader2 className="size-4 stroke-[3px] animate-spin" /> 准备中…</>
                     : <><Swords className="size-4 stroke-[3px]" /> CHALLENGE 挑战此坦克 →</>}
                 </button>
                 <button
@@ -794,7 +794,7 @@ export default function TankDetailPage() {
               className="flex items-center gap-1.5 border-4 border-black bg-[#FF6B6B] px-3 py-1.5 text-sm font-black text-white uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {challenging
-                ? <><Loader2 className="size-4 animate-spin" /> 对战中…</>
+                ? <><Loader2 className="size-4 animate-spin" /> 准备中…</>
                 : <><Swords className="size-4 stroke-[3px]" /> 挑战此坦克</>}
             </button>
           </div>

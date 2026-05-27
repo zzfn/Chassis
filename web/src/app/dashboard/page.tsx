@@ -448,7 +448,7 @@ export default function DashboardPage() {
                         {challengingId === p.agent_id
                           ? <Loader2 className="size-3 animate-spin" />
                           : <Swords className="size-3" />}
-                        {challengingId === p.agent_id ? "对战中" : "挑战"}
+                        {challengingId === p.agent_id ? "准备中" : "挑战"}
                       </button>
                     )}
                   </div>

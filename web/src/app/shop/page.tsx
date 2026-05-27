@@ -497,7 +497,6 @@ export default function ShopPage() {
     const data = await res.json()
     if (typeof data.credits === "number") setBalance(data.credits)
     setOwnedBullets(s => new Set([...s, skin.id]))
-    await equipBullet(skin.id)
   }
 
   async function buyNameColor(item: NameColor) {
@@ -513,7 +512,6 @@ export default function ShopPage() {
     const data = await res.json()
     if (typeof data.credits === "number") setBalance(data.credits)
     setOwnedNameColors(s => new Set([...s, item.id]))
-    await equipNameColor(item.id)
   }
 
   async function equipBullet(id: string) {
