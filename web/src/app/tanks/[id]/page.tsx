@@ -247,12 +247,17 @@ function BulletFirePreview({ bulletStyle, skinSvg }: { bulletStyle: string; skin
 
         {/* 右侧淡出遮罩 */}
         <defs>
-          <linearGradient id="fade-r" x1="0" x2="1">
-            <stop offset="0%"   stopColor="#09090b" stopOpacity="0" />
-            <stop offset="100%" stopColor="#09090b" stopOpacity="1" />
+          <linearGradient id="fade-r-sky" x1="0" x2="1">
+            <stop offset="0%"   stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
+          </linearGradient>
+          <linearGradient id="fade-r-ground" x1="0" x2="1">
+            <stop offset="0%"   stopColor="#18181b" stopOpacity="0" />
+            <stop offset="100%" stopColor="#18181b" stopOpacity="1" />
           </linearGradient>
         </defs>
-        <rect x="200" y="0" width="80" height="54" fill="url(#fade-r)" />
+        <rect x="200" y="0"  width="80" height="54" fill="url(#fade-r-sky)" />
+        <rect x="200" y="54" width="80" height="18" fill="url(#fade-r-ground)" />
       </svg>
     </div>
   )
@@ -984,21 +989,23 @@ ${guideUrl}
                       <div className="border-4 border-black overflow-hidden shadow-[4px_4px_0px_0px_#000]">
                         <div className="bg-black px-3 py-1.5 flex items-center justify-between">
                           <span className="text-[#FFD93D] text-xs font-black uppercase tracking-widest">TANK KEY</span>
-                          {isOwner && (
-                            <button
-                              onClick={generateKey}
-                              disabled={generatingKey}
-                              className="border-2 border-[#FFD93D] px-2 py-0.5 text-[11px] text-[#FFD93D] font-bold hover:bg-[#FFD93D] hover:text-black disabled:opacity-40 transition-colors"
-                            >
-                              {generatingKey ? <Loader2 className="size-3 animate-spin" /> : "轮换密钥"}
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {apiKey && <CopyButton text={apiKey.key} />}
+                            {isOwner && (
+                              <button
+                                onClick={generateKey}
+                                disabled={generatingKey}
+                                className="border-2 border-[#FFD93D] px-2 py-0.5 text-[11px] text-[#FFD93D] font-bold hover:bg-[#FFD93D] hover:text-black disabled:opacity-40 transition-colors"
+                              >
+                                {generatingKey ? <Loader2 className="size-3 animate-spin" /> : "轮换密钥"}
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 bg-white px-3 py-2">
                           {apiKey ? (
                             <>
                               <code className="flex-1 truncate font-mono text-xs text-black font-bold">{apiKey.key}</code>
-                              <CopyButton text={apiKey.key} />
                             </>
                           ) : keyLoaded ? (
                             <span className="flex-1 text-xs font-bold text-black/40">未生成</span>

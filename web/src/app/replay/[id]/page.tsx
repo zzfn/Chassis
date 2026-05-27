@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX, Loader2, Trophy, Swords, Zap, Video } from "lucide-react"
+import { Play, Pause, SkipBack, ArrowLeft, Volume2, VolumeX, Loader2, Trophy, Swords, Zap, Video, Share2, Check } from "lucide-react"
 import * as PIXI from "pixi.js"
 
 // ── 数据类型 ──────────────────────────────────────────────────
@@ -792,6 +792,8 @@ export default function ReplayPage() {
   const [recording, setRecording] = useState(false)
   const [fps,       setFps]       = useState<number | null>(null)
   const [loadedAt]                = useState(() => new Date())
+  const [shared,    setShared]    = useState(false)
+  const [exportPct, setExportPct] = useState<number | null>(null)
 
   const seekFn        = useRef<((idx: number) => void) | null>(null)
   const sfxDone       = useRef(false)
@@ -823,47 +825,91 @@ export default function ReplayPage() {
     setPlaying(false); seekFn.current?.(0); setFrameIdx(0); sfxDone.current = false
   }
 
-  function handleDownloadVideo() {
+  async function handleDownloadVideo() {
     if (!data || !pixiCanvas.current || recording) return
+    setRecording(true)
+    setPlaying(false)
+    setExportPct(0)
 
     const canvas = pixiCanvas.current
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : MediaRecorder.isTypeSupported('video/webm')
-      ? 'video/webm'
-      : 'video/mp4'
+    // H.264 要求宽高为偶数
+    const w = canvas.width  % 2 === 0 ? canvas.width  : canvas.width  - 1
+    const h = canvas.height % 2 === 0 ? canvas.height : canvas.height - 1
 
-    // 重置到第0帧，从头录制
-    seekFn.current?.(0)
-    setFrameIdx(0)
-    sfxDone.current = false
-
-    const stream = canvas.captureStream(30)
-    const recorder = new MediaRecorder(stream, { mimeType })
-    recordChunks.current = []
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) recordChunks.current.push(e.data)
+    // WebCodecs 不支持时 fallback 到 MediaRecorder
+    if (!('VideoEncoder' in window)) {
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9' : 'video/webm'
+      seekFn.current?.(0); setFrameIdx(0); sfxDone.current = false
+      const stream = canvas.captureStream(30)
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recordChunks.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.current.push(e.data) }
+      recorder.onstop = () => {
+        const blob = new Blob(recordChunks.current, { type: mimeType })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `replay-${id}.webm`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        setRecording(false); setExportPct(null)
+      }
+      mediaRecorder.current = recorder
+      recorder.start(100); setPlaying(true)
+      return
     }
 
-    recorder.onstop = () => {
-      const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm'
-      const blob = new Blob(recordChunks.current, { type: mimeType })
+    try {
+      const { Muxer, ArrayBufferTarget } = await import('mp4-muxer')
+      const target = new ArrayBufferTarget()
+      const muxer = new Muxer({
+        target,
+        video: { codec: 'avc', width: w, height: h },
+        fastStart: 'in-memory',
+      })
+
+      const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => console.error('VideoEncoder:', e),
+      })
+      encoder.configure({
+        codec: 'avc1.42001f',
+        width: w, height: h,
+        bitrate: 4_000_000,
+        framerate: 30,
+      })
+
+      const FPS = 30
+      const total = data.telemetry.length
+      const rAF = () => new Promise<void>(r => requestAnimationFrame(() => r()))
+
+      for (let i = 0; i < total; i++) {
+        seekFn.current?.(i)
+        await rAF() // ticker 处理 seek（return 早退，不渲染）
+        await rAF() // ticker 渲染这一帧
+        const bitmap = await createImageBitmap(canvas, 0, 0, w, h)
+        const frame = new VideoFrame(bitmap, {
+          timestamp: Math.round((i / FPS) * 1_000_000),
+          duration:  Math.round((1  / FPS) * 1_000_000),
+        })
+        encoder.encode(frame, { keyFrame: i % 30 === 0 })
+        frame.close(); bitmap.close()
+        setExportPct(Math.round(((i + 1) / total) * 100))
+      }
+
+      await encoder.flush()
+      muxer.finalize()
+
+      const blob = new Blob([target.buffer], { type: 'video/mp4' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = `replay-${id}.${ext}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
+      a.href = url; a.download = `replay-${id}.mp4`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      setRecording(false)
+    } finally {
+      setRecording(false); setExportPct(null)
+      seekFn.current?.(0); setFrameIdx(0)
     }
-
-    mediaRecorder.current = recorder
-    recorder.start(100)
-    setRecording(true)
-    setPlaying(true)
   }
 
   const total  = data?.telemetry.length ?? 0
@@ -953,12 +999,32 @@ export default function ReplayPage() {
           >
             <ArrowLeft className="size-4" /> 返回
           </button>
-          <div
-            className="flex items-center gap-2 rounded-full border-4 px-4 py-1.5"
-            style={{ borderColor: "#FF3AF2", background: "rgba(255,58,242,0.12)", boxShadow: "0 0 12px rgba(255,58,242,0.4)" }}
-          >
-            <span className="size-2 animate-pulse rounded-full bg-[#FF3AF2]" />
-            <span className="text-xs font-black uppercase tracking-[0.3em] text-[#FF3AF2]">Battle Replay</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                const url = window.location.href
+                const shareData = { title: "Battle Replay", text: `${t0?.name ?? "?"} vs ${t1?.name ?? "?"}`, url }
+                if (navigator.share && navigator.canShare?.(shareData)) {
+                  await navigator.share(shareData).catch(() => {})
+                } else {
+                  await navigator.clipboard.writeText(url).catch(() => {})
+                  setShared(true)
+                  setTimeout(() => setShared(false), 2000)
+                }
+              }}
+              className="flex items-center gap-2 rounded-full border-4 border-dashed border-[#00F5D4] px-4 py-1.5 text-sm font-black uppercase tracking-widest text-[#00F5D4] transition-all duration-150 hover:bg-[#00F5D4]/10 hover:scale-105"
+            >
+              {shared
+                ? <><Check className="size-4" /> 已复制</>
+                : <><Share2 className="size-4" /> 分享</>}
+            </button>
+            <div
+              className="flex items-center gap-2 rounded-full border-4 px-4 py-1.5"
+              style={{ borderColor: "#FF3AF2", background: "rgba(255,58,242,0.12)", boxShadow: "0 0 12px rgba(255,58,242,0.4)" }}
+            >
+              <span className="size-2 animate-pulse rounded-full bg-[#FF3AF2]" />
+              <span className="text-xs font-black uppercase tracking-[0.3em] text-[#FF3AF2]">Battle Replay</span>
+            </div>
           </div>
         </div>
 
@@ -1166,11 +1232,11 @@ export default function ReplayPage() {
               <button
                 onClick={handleDownloadVideo}
                 disabled={recording}
-                title={recording ? "录制中…" : "下载视频"}
+                title={exportPct !== null ? `导出中 ${exportPct}%` : "导出 MP4"}
                 className="flex size-8 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-[#FFE600]/70 text-[#FFE600] transition-all duration-150 hover:bg-[#FFE600]/15 hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
               >
-                {recording
-                  ? <Loader2 className="size-3.5 animate-spin" />
+                {exportPct !== null
+                  ? <span className="text-[9px] font-black leading-none">{exportPct}%</span>
                   : <Video className="size-3.5" />
                 }
               </button>
