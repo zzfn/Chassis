@@ -17,6 +17,7 @@ const TANK_NAV = [
   { href: "/tanks",       label: "我的坦克" },
   { href: "/shop",        label: "商店" },
   { href: "/agent-guide", label: "Agent 文档" },
+  { href: "/about",       label: "关于" },
 ]
 
 const SNAKE_NAV = [
