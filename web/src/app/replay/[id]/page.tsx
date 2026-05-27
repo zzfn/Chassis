@@ -38,9 +38,18 @@ interface BattleResult {
   arena: { map: string[] }
   telemetry: FrameData[]
   battle_log: string[]
-  skins?: Record<string, { svg?: string; bullet_style?: string }>
+  skins?: Record<string, { svg?: string; bullet_style?: string; trail_style?: string; name_color?: string }>
   js_stats?: JsExecStats[]
 }
+
+// ── 拖尾样式 ──────────────────────────────────────────────────────
+const TRAIL_COLORS: Record<string, number> = {
+  default: 0xffffff,
+  neon:    0x00f5d4,
+  fire:    0xff6b35,
+  plasma:  0xa855f7,
+}
+const TRAIL_LEN = 8  // 保留最近 N 帧的位置历史
 
 // ── 子弹皮肤样式 ─────────────────────────────────────────────────
 interface BulletStyleDef { color: number; radius: number; glowColor?: number; shape: 'circle' | 'diamond' | 'star' }
@@ -304,7 +313,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
   // ── 坦克 sprite 映射 ──────────────────────────────────────
   type TankSprites = {
     root: PIXI.Container; body: PIXI.Container; flash: PIXI.Graphics
-    hpBar: PIXI.Graphics; scoreText: PIXI.Text
+    hpBar: PIXI.Graphics; scoreText: PIXI.Text; nameLabel: PIXI.Text
     statusRing: PIXI.Graphics; statusIcon: PIXI.Text
     _lastHp: number; _lastScore: number; _lastStatus: string
   }
@@ -315,6 +324,11 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
   const bLayer       = useRef<PIXI.Container | null>(null)
   const sLayer       = useRef<PIXI.Container | null>(null)
   const moundSprites = useRef<Map<string, PIXI.Sprite>>(new Map())
+
+  // ── 拖尾 ──────────────────────────────────────────────────
+  type TrailState = { positions: Array<{x: number; y: number}>; dots: PIXI.Graphics[] }
+  const trails  = useRef<Map<number, TrailState>>(new Map())
+  const tLayer  = useRef<PIXI.Container | null>(null)
 
   // ── 命中特效 ──────────────────────────────────────────────
   type Explosion = { x: number; y: number; g: PIXI.Graphics; t: number; color: number }
@@ -376,6 +390,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
     // ── 图层 ────────────────────────────────────────────
     const starLayer   = new PIXI.Container(); app.stage.addChild(starLayer);   sLayer.current = starLayer
     const bulletLayer = new PIXI.Container(); app.stage.addChild(bulletLayer); bLayer.current = bulletLayer
+    const trailLayer  = new PIXI.Container(); app.stage.addChild(trailLayer);  tLayer.current = trailLayer
     const tankLayer   = new PIXI.Container(); app.stage.addChild(tankLayer)
 
     // 草地覆盖层（在坦克层上方，草叶半透明遮住坦克）
@@ -402,7 +417,7 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
       const skin = data.skins?.[t.name]
       if (skin?.svg) {
         const sp = PIXI.Sprite.from(svgUrl(
-          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -14 40 28">${skin.svg}</svg>`
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -14 40 28" width="200" height="140">${skin.svg}</svg>`
         ))
         sp.width = TS * 1.25; sp.height = TS * 0.875; sp.anchor.set(0.5)
         body.addChild(sp)
@@ -449,11 +464,24 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
       statusIcon.anchor.set(0.5, 1)
       statusIcon.y = -TS * 0.72
 
+      // 坦克名字标签（颜色来自装备的名字皮肤）
+      const NAME_COLOR_PIXI: Record<string, number> = {
+        magenta: 0xFF3AF2, cyan: 0x00F5D4, yellow: 0xFFE600, orange: 0xFF6B35, purple: 0xB45FFF,
+      }
+      const namePixiColor = NAME_COLOR_PIXI[data.skins?.[t.name]?.name_color ?? ''] ?? 0xffffff
+      const nameLabel = new PIXI.Text(t.name, new PIXI.TextStyle({
+        fontSize: 9, fill: namePixiColor, fontFamily: 'monospace', fontWeight: 'bold',
+        dropShadow: true, dropShadowDistance: 1, dropShadowColor: 0x000000, dropShadowAlpha: 1,
+      }))
+      nameLabel.anchor.set(0.5, 1)
+      nameLabel.y = -TS * 0.75
+
       root.addChild(statusRing)
       root.addChild(body)
       root.addChild(hpBar)
       root.addChild(scoreText)
       root.addChild(statusIcon)
+      root.addChild(nameLabel)
       root.addChild(flash)
       tankLayer.addChild(root)
 
@@ -463,7 +491,28 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
       hpBar.beginFill(0x000000, 0.45).drawRect(-bw / 2, 0, bw, 3).endFill()
       hpBar.beginFill(0x4ade80, 0.9).drawRect(-bw / 2, 0, bw * initPct, 3).endFill()
 
-      tanks.current.set(t.id, { root, body, flash, hpBar, scoreText, statusRing, statusIcon, _lastHp: t.hp, _lastScore: t.score, _lastStatus: '' })
+      tanks.current.set(t.id, { root, body, flash, hpBar, scoreText, nameLabel, statusRing, statusIcon, _lastHp: t.hp, _lastScore: t.score, _lastStatus: '' })
+    })
+
+    // ── 拖尾 dot 对象池 ───────────────────────────────────
+    trails.current.clear()
+    data.telemetry[0]?.tanks.forEach(t => {
+      const styleName  = data.skins?.[t.name]?.trail_style ?? 'default'
+      const teamId     = t.team_id ?? (t.id % 2)
+      const palColor   = ((data.telemetry[0]?.tanks.length ?? 0) >= 3
+        ? TEAM_PIXI_PALETTE[teamId % 2]
+        : PALETTE[t.id % PALETTE.length]).body
+      const trailColor = TRAIL_COLORS[styleName] ?? palColor
+      const dots: PIXI.Graphics[] = []
+      for (let i = 0; i < TRAIL_LEN; i++) {
+        const g = new PIXI.Graphics()
+        const r = Math.max(1.2, 3.8 - i * 0.35)
+        g.beginFill(trailColor, 1).drawCircle(0, 0, r).endFill()
+        g.visible = false
+        trailLayer.addChild(g)
+        dots.push(g)
+      }
+      trails.current.set(t.id, { positions: [], dots })
     })
 
     // 边框
@@ -507,6 +556,8 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         tanks.current.forEach(sp => { sp.flash.clear(); sp.statusRing.clear(); sp.statusIcon.text = ''; sp._lastHp = -1; sp._lastScore = -1; sp._lastStatus = '' })
         explosions.current.forEach(ex => { ex.g.parent?.removeChild(ex.g); ex.g.destroy() })
         explosions.current = []
+        // 清除拖尾历史
+        trails.current.forEach(tr => { tr.positions = []; tr.dots.forEach(d => { d.visible = false }) })
         return                         // 本帧跳过推进，下帧再开始
       }
 
@@ -522,11 +573,19 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
             accum.current  -= MS_PER_TICK
             bMatches.current = matchBullets(prev.current?.bullets ?? [], curr.current?.bullets ?? [])
 
-            // 命中检测：HP 下降 → 坦克闪光；子弹消失 → 爆炸粒子
+            // 命中检测 & 拖尾采样
             if (prev.current && curr.current) {
               prev.current.tanks.forEach(pt => {
                 const ct = curr.current!.tanks.find(x => x.id === pt.id)
                 if (ct && ct.hp < pt.hp) hitFlashes.current.set(pt.id, 0)
+                // 坦克移动时记录前一帧位置到拖尾历史
+                if (ct?.alive && (pt.x !== ct.x || pt.y !== ct.y)) {
+                  const tr = trails.current.get(pt.id)
+                  if (tr) {
+                    tr.positions.unshift({ x: pt.x * S, y: pt.y * S })
+                    if (tr.positions.length > TRAIL_LEN) tr.positions.pop()
+                  }
+                }
               })
               const currBulletIds = new Set(curr.current.bullets.map(b => b.id))
               prev.current.bullets.forEach(b => {
@@ -656,6 +715,19 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         }
         sp.statusRing.visible = t.alive
         sp.statusIcon.visible = t.alive
+      })
+
+      // 拖尾
+      c.tanks.forEach(t => {
+        const tr = trails.current.get(t.id); if (!tr) return
+        tr.dots.forEach((dot, i) => {
+          if (i >= tr.positions.length || !t.alive) { dot.visible = false; return }
+          dot.x     = tr.positions[i].x
+          dot.y     = tr.positions[i].y
+          dot.alpha = (1 - i / TRAIL_LEN) * 0.55
+          dot.scale.set(1 - i * 0.09)
+          dot.visible = true
+        })
       })
 
       // 子弹
@@ -876,10 +948,10 @@ export default function ReplayPage() {
         codec: 'avc1.42001f',
         width: w, height: h,
         bitrate: 4_000_000,
-        framerate: 30,
+        framerate: 5,
       })
 
-      const FPS = 30
+      const TICK_US = 200 * 1_000  // 每帧 200ms，与前端 MS_PER_TICK 一致
       const total = data.telemetry.length
       const rAF = () => new Promise<void>(r => requestAnimationFrame(() => r()))
 
@@ -889,8 +961,8 @@ export default function ReplayPage() {
         await rAF() // ticker 渲染这一帧
         const bitmap = await createImageBitmap(canvas, 0, 0, w, h)
         const frame = new VideoFrame(bitmap, {
-          timestamp: Math.round((i / FPS) * 1_000_000),
-          duration:  Math.round((1  / FPS) * 1_000_000),
+          timestamp: i * TICK_US,
+          duration:  TICK_US,
         })
         encoder.encode(frame, { keyFrame: i % 30 === 0 })
         frame.close(); bitmap.close()
@@ -1405,16 +1477,41 @@ export default function ReplayPage() {
               <div className="shrink-0 px-4 py-2.5" style={{ borderBottom: "4px dashed rgba(255,107,53,0.4)", background: "rgba(13,13,26,0.4)" }}>
                 <p className="text-xs font-black uppercase tracking-widest text-[#FF6B35]">战报</p>
               </div>
-              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 min-h-0">
+              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5 min-h-0">
                 {data.battle_log.map((line, i) => {
                   const m    = line.match(/\[(?:Turn|Tick)\s*(\d+)\]/i)
                   const tick = m ? Number(m[1]) : null
                   const past = tick !== null && tick <= frameIdx
+                  // JS print() 输出：格式 [Turn XXXX][TankName] ...
+                  const isDebug = /^\[(?:Turn|Tick)\s*\d+\]\[[^\]]+\]/.test(line)
+                  // 关键事件关键词
+                  const isHit      = line.includes('击中') || line.includes('摧毁')
+                  const isSkill    = line.includes('中毒') || line.includes('冻结') || line.includes('眩晕') || line.includes('护盾') || line.includes('隐身') || line.includes('过载') || line.includes('传送') || line.includes('加速')
+                  const isStar     = line.includes('星星') || line.includes('得分')
+                  const isEnd      = line.includes('结束') || line.includes('胜者') || line.includes('═══')
+
+                  let color: string
+                  if (!past) {
+                    color = "rgba(255,255,255,0.15)"
+                  } else if (isDebug) {
+                    color = "rgba(255,255,255,0.3)"
+                  } else if (isEnd) {
+                    color = "#FFE600"
+                  } else if (isHit) {
+                    color = "#FF6B35"
+                  } else if (isSkill) {
+                    color = "#a78bfa"
+                  } else if (isStar) {
+                    color = "#fbbf24"
+                  } else {
+                    color = "rgba(255,255,255,0.7)"
+                  }
+
                   return (
                     <p
                       key={i}
-                      className="text-[11px] leading-relaxed transition-colors font-medium"
-                      style={{ color: past ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.2)" }}
+                      className={`leading-relaxed transition-colors ${isDebug ? "text-[10px] font-mono pl-2 border-l border-white/10" : "text-[11px] font-medium"}`}
+                      style={{ color }}
                     >
                       {line}
                     </p>

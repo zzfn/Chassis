@@ -58,6 +58,8 @@ interface TankSkin {
   svg?: string
   description?: string
   bullet_style?: string
+  name_color?: string
+  trail_style?: string
 }
 
 const SKILLS = [
@@ -72,11 +74,32 @@ const SKILLS = [
 ] as const
 
 const BULLET_STYLES = [
-  { value: "default", label: "默认",  color: "#fef08a", shape: "circle"  },
-  { value: "fire",    label: "火焰",  color: "#ff5500", shape: "circle"  },
-  { value: "plasma",  label: "等离子", color: "#22d3ee", shape: "circle"  },
-  { value: "void",    label: "虚空",  color: "#a855f7", shape: "diamond" },
-  { value: "gold",    label: "黄金",  color: "#fbbf24", shape: "star"   },
+  { value: "default",   label: "默认",   color: "#fef08a", shape: "circle"    },
+  { value: "fire",      label: "火焰",   color: "#ff5500", shape: "circle"    },
+  { value: "plasma",    label: "等离子", color: "#22d3ee", shape: "circle"    },
+  { value: "void",      label: "虚空",   color: "#a855f7", shape: "diamond"   },
+  { value: "gold",      label: "黄金",   color: "#fbbf24", shape: "star"      },
+  { value: "ice",       label: "冰晶",   color: "#bae6fd", shape: "hexagon"   },
+  { value: "lightning", label: "闪电",   color: "#fef9c3", shape: "lightning" },
+  { value: "toxic",     label: "毒素",   color: "#4ade80", shape: "orbit"     },
+  { value: "sakura",    label: "樱花",   color: "#f472b6", shape: "sakura"    },
+  { value: "rainbow",   label: "彩虹",   color: "#ff0080", shape: "rainbow"   },
+] as const
+
+const NAME_COLOR_STYLES = [
+  { value: "white",   label: "默认白色", color: "#ffffff"                  },
+  { value: "magenta", label: "品红",     color: "#FF3AF2"                  },
+  { value: "cyan",    label: "青色",     color: "#00F5D4"                  },
+  { value: "yellow",  label: "黄色",     color: "#FFE600"                  },
+  { value: "orange",  label: "橙色",     color: "#FF6B35"                  },
+  { value: "purple",  label: "紫色渐变", color: "#7B2FFF", gradient: true  },
+] as const
+
+const TRAIL_STYLES = [
+  { value: "default", label: "默认",   color: "#ffffff" },
+  { value: "neon",    label: "霓虹",   color: "#00F5D4" },
+  { value: "fire",    label: "火焰",   color: "#FF6B35" },
+  { value: "plasma",  label: "等离子", color: "#a855f7" },
 ] as const
 
 const AI_OPTIONS = [
@@ -326,7 +349,9 @@ export default function TankDetailPage() {
   const [skinError, setSkinError] = useState<string | null>(null)
   const [rerolling, setRerolling] = useState(false)
   const [rerollError, setRerollError] = useState<string | null>(null)
-  const [ownedBullets, setOwnedBullets] = useState<Set<string>>(new Set(["default"]))
+  const [ownedBullets, setOwnedBullets]         = useState<Set<string>>(new Set(["default"]))
+  const [ownedNameColors, setOwnedNameColors]   = useState<Set<string>>(new Set(["white"]))
+  const [ownedTrails, setOwnedTrails]           = useState<Set<string>>(new Set(["default"]))
 
   // 分享弹窗
   const [shareOpen, setShareOpen] = useState(false)
@@ -393,11 +418,17 @@ export default function TankDetailPage() {
     })
     if (!res.ok) return
     const data = await res.json()
-    const owned = new Set<string>(["default"])
+    const ownedB = new Set<string>(["default"])
+    const ownedN = new Set<string>(["white"])
+    const ownedT = new Set<string>(["default"])
     for (const item of (data.items ?? []) as { item_type: string; item_id: string }[]) {
-      if (item.item_type === "bullet") owned.add(item.item_id)
+      if (item.item_type === "bullet")          ownedB.add(item.item_id)
+      else if (item.item_type === "name_color") ownedN.add(item.item_id)
+      else if (item.item_type === "trail")      ownedT.add(item.item_id)
     }
-    setOwnedBullets(owned)
+    setOwnedBullets(ownedB)
+    setOwnedNameColors(ownedN)
+    setOwnedTrails(ownedT)
   }
 
   async function generateSkin() {
@@ -431,13 +462,26 @@ export default function TankDetailPage() {
       })
       if (!res.ok) return
       setSkinSaved(true)
-      // 同步商店 equipped 状态
-      const bulletId = skin.bullet_style ?? "default"
-      await fetch(`${apiBase}/api/shop/equip`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ item_type: "bullet", item_id: bulletId }),
-      })
+      const bulletId    = skin.bullet_style ?? "default"
+      const nameColorId = skin.name_color   ?? "white"
+      const trailId     = skin.trail_style  ?? "default"
+      await Promise.all([
+        fetch(`${apiBase}/api/shop/equip`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ item_type: "bullet", item_id: bulletId }),
+        }),
+        fetch(`${apiBase}/api/shop/equip`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ item_type: "name_color", item_id: nameColorId }),
+        }),
+        fetch(`${apiBase}/api/shop/equip`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ item_type: "trail", item_id: trailId }),
+        }),
+      ])
     } finally { setSkinSaving(false) }
   }
 
@@ -915,7 +959,7 @@ export default function TankDetailPage() {
                       onClick={() => { setManageOpen(true); setRenameTo(tank.agent_name) }}
                       className="flex items-center gap-1.5 border-4 border-black bg-white px-3 py-1.5 text-sm font-bold shadow-[3px_3px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                     >
-                      <Settings className="size-3.5 stroke-[3px]" /> 管理
+                      <Settings className="size-3.5 stroke-[3px]" /> 自定义坦克
                     </button>
                   )}
                   {rightTab === "code" && isOwner && (
@@ -1436,16 +1480,45 @@ ${guideUrl}
                                 }`}
                               >
                                 <svg viewBox="-10 -10 20 20" width="32" height="32">
+                                  {s.shape === "circle" && (
+                                    <>
+                                      {s.value !== "default" && <circle cx="0" cy="0" r="7" fill={s.color} opacity="0.2" />}
+                                      <circle cx="0" cy="0" r="4" fill={s.color} />
+                                    </>
+                                  )}
                                   {s.shape === "diamond" && (
                                     <polygon points="0,-7 7,0 0,7 -7,0" fill={s.color} opacity="0.9" />
                                   )}
                                   {s.shape === "star" && (
                                     <polygon points="0,-7 1.7,-2.3 6.7,-2.2 2.8,0.9 4.1,6 0,3.1 -4.1,6 -2.8,0.9 -6.7,-2.2 -1.7,-2.3" fill={s.color} opacity="0.9" />
                                   )}
-                                  {s.shape === "circle" && (
+                                  {s.shape === "hexagon" && (
+                                    <polygon points="0,-7 6.1,-3.5 6.1,3.5 0,7 -6.1,3.5 -6.1,-3.5" fill={s.color} opacity="0.9" />
+                                  )}
+                                  {s.shape === "lightning" && (
+                                    <path d="M2,-7 L-2,0 L1,0 L-2,7 L2,1 L-1,1 Z" fill={s.color} opacity="0.9" />
+                                  )}
+                                  {s.shape === "orbit" && (
                                     <>
-                                      {s.value !== "default" && <circle cx="0" cy="0" r="7" fill={s.color} opacity="0.2" />}
                                       <circle cx="0" cy="0" r="4" fill={s.color} />
+                                      <circle cx="7" cy="0" r="1.8" fill={s.color} opacity="0.7" />
+                                      <circle cx="-3.5" cy="6.1" r="1.8" fill={s.color} opacity="0.7" />
+                                      <circle cx="-3.5" cy="-6.1" r="1.8" fill={s.color} opacity="0.7" />
+                                    </>
+                                  )}
+                                  {s.shape === "sakura" && (
+                                    <path d="M0,-7 Q4.5,-4.5 7,0 Q4.5,4.5 0,7 Q-4.5,4.5 -7,0 Q-4.5,-4.5 0,-7 Z" fill={s.color} opacity="0.9" />
+                                  )}
+                                  {s.shape === "rainbow" && (
+                                    <>
+                                      <defs>
+                                        <linearGradient id="rbg" x1="0%" y1="0%" x2="100%" y2="100%">
+                                          <stop offset="0%"   stopColor="#ff0080" />
+                                          <stop offset="50%"  stopColor="#7b2fff" />
+                                          <stop offset="100%" stopColor="#00f5d4" />
+                                        </linearGradient>
+                                      </defs>
+                                      <circle cx="0" cy="0" r="6" fill="url(#rbg)" />
                                     </>
                                   )}
                                 </svg>
@@ -1455,6 +1528,86 @@ ${guideUrl}
                           })}
                         </div>
                         {ownedBullets.size < BULLET_STYLES.length && (
+                          <Link href="/shop" onClick={() => setManageOpen(false)}
+                            className="mt-2 inline-block text-xs font-black text-black/40 underline hover:text-black transition-colors"
+                          >
+                            前往商店解锁更多样式 →
+                          </Link>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 名字颜色 */}
+                    {isOwner && (
+                      <div>
+                        <p className="mb-1 text-sm font-black uppercase tracking-wide">名字颜色</p>
+                        <p className="mb-3 text-xs font-bold text-black/60">在战场上让你的名字更耀眼。</p>
+                        <div className="flex flex-wrap gap-2">
+                          {NAME_COLOR_STYLES.filter(s => ownedNameColors.has(s.value)).map(s => {
+                            const active = (skin.name_color ?? "white") === s.value
+                            const isGradient = "gradient" in s && s.gradient
+                            const nameStyle: React.CSSProperties = isGradient
+                              ? {
+                                  background:           "linear-gradient(90deg, #7B2FFF, #FF3AF2, #00F5D4)",
+                                  WebkitBackgroundClip: "text",
+                                  WebkitTextFillColor:  "transparent",
+                                  backgroundClip:       "text",
+                                }
+                              : { color: s.color }
+                            return (
+                              <button
+                                key={s.value}
+                                onClick={() => setSkin(prev => ({ ...prev, name_color: s.value }))}
+                                className={`flex flex-col items-center gap-1 border-4 border-black px-3 py-2 transition-colors ${
+                                  active
+                                    ? "bg-[#FFD93D] shadow-[3px_3px_0px_0px_#000]"
+                                    : "bg-white hover:bg-[#FFF9C4] shadow-[2px_2px_0px_0px_#000]"
+                                }`}
+                              >
+                                <span className="text-sm font-black" style={nameStyle}>{s.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {ownedNameColors.size < NAME_COLOR_STYLES.length && (
+                          <Link href="/shop" onClick={() => setManageOpen(false)}
+                            className="mt-2 inline-block text-xs font-black text-black/40 underline hover:text-black transition-colors"
+                          >
+                            前往商店解锁更多颜色 →
+                          </Link>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 拖尾样式 */}
+                    {isOwner && (
+                      <div>
+                        <p className="mb-1 text-sm font-black uppercase tracking-wide">拖尾样式</p>
+                        <p className="mb-3 text-xs font-bold text-black/60">移动时在战场上留下炫彩光轨。</p>
+                        <div className="flex flex-wrap gap-2">
+                          {TRAIL_STYLES.filter(s => ownedTrails.has(s.value)).map(s => {
+                            const active = (skin.trail_style ?? "default") === s.value
+                            return (
+                              <button
+                                key={s.value}
+                                onClick={() => setSkin(prev => ({ ...prev, trail_style: s.value }))}
+                                className={`flex flex-col items-center gap-1.5 border-4 border-black p-2.5 transition-colors ${
+                                  active
+                                    ? "bg-[#FFD93D] shadow-[3px_3px_0px_0px_#000]"
+                                    : "bg-white hover:bg-[#FFF9C4] shadow-[2px_2px_0px_0px_#000]"
+                                }`}
+                              >
+                                <svg viewBox="-10 -10 20 20" width="32" height="32">
+                                  <circle cx="0" cy="0" r="5" fill={s.color} opacity="0.9" />
+                                  <circle cx="-5" cy="0" r="3.5" fill={s.color} opacity="0.5" />
+                                  <circle cx="-9" cy="0" r="2" fill={s.color} opacity="0.25" />
+                                </svg>
+                                <span className="text-[11px] font-bold">{s.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {ownedTrails.size < TRAIL_STYLES.length && (
                           <Link href="/shop" onClick={() => setManageOpen(false)}
                             className="mt-2 inline-block text-xs font-black text-black/40 underline hover:text-black transition-colors"
                           >

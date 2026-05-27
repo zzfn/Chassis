@@ -1113,6 +1113,7 @@ pub struct PlayerEntry {
     pub elo: f64,
     pub version: i64,
     pub svg: Option<String>,
+    pub name_color: Option<String>,
 }
 
 pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<PlayerEntry>, sqlx::Error> {
@@ -1148,8 +1149,9 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
         ORDER BY elo DESC, pvp_wins DESC, pvp_battles DESC
     "#).bind(since).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| {
-        let svg = r.try_get::<serde_json::Value, _>("skin").ok()
-            .and_then(|v| v.get("svg")?.as_str().map(String::from));
+        let skin_json = r.try_get::<serde_json::Value, _>("skin").ok();
+        let svg        = skin_json.as_ref().and_then(|v| v.get("svg")?.as_str().map(String::from));
+        let name_color = skin_json.as_ref().and_then(|v| v.get("name_color")?.as_str().map(String::from));
         PlayerEntry {
             agent_id:    r.get("agent_id"),
             agent_name:  r.get("agent_name"),
@@ -1160,6 +1162,7 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             elo:         r.get("elo"),
             version:     r.get("version"),
             svg,
+            name_color,
         }
     }).collect())
 }
@@ -1233,6 +1236,7 @@ pub async fn search_opponents(
         elo:         r.get("elo"),
         version:     r.get("version"),
         svg:         None,
+        name_color:  None,
     }).collect())
 }
 
@@ -1751,6 +1755,60 @@ pub async fn admin_list_recent_battles(pool: &PgPool, limit: i64) -> Result<Vec<
         winner: r.get("winner"),
         total_ticks: r.get("total_ticks"),
         created_at: r.get("created_at"),
+    }).collect())
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicBattleEntry {
+    pub id: String,
+    pub challenger: String,
+    pub challenger_owner: Option<String>,
+    pub challenger_svg: Option<String>,
+    pub opponent: String,
+    pub opponent_owner: Option<String>,
+    pub opponent_svg: Option<String>,
+    pub winner: String,
+    pub total_ticks: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+/// 公开最近比赛列表（无需鉴权）
+pub async fn get_public_recent_battles(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<PublicBattleEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT
+            b.id::text,
+            b.agent_name  AS challenger,
+            b.opponent,
+            b.winner,
+            b.total_ticks,
+            b.created_at,
+            uc.username   AS challenger_owner,
+            uo.username   AS opponent_owner,
+            ts_c.skin->>'svg' AS challenger_svg,
+            ts_o.skin->>'svg' AS opponent_svg
+        FROM battles b
+        LEFT JOIN users       uc   ON uc.id  = b.challenger_id
+        LEFT JOIN users       uo   ON uo.id  = b.opponent_id
+        LEFT JOIN tank_skins  ts_c ON ts_c.user_id = b.challenger_id AND ts_c.agent_name = b.agent_name
+        LEFT JOIN tank_skins  ts_o ON ts_o.user_id = b.opponent_id   AND ts_o.agent_name = b.opponent
+        WHERE b.challenger_id IS NOT NULL
+        ORDER BY b.created_at DESC
+        LIMIT $1 OFFSET $2
+    "#)
+    .bind(limit).bind(offset)
+    .fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| PublicBattleEntry {
+        id:               r.get("id"),
+        challenger:       r.get("challenger"),
+        challenger_owner: r.get("challenger_owner"),
+        challenger_svg:   r.get("challenger_svg"),
+        opponent:         r.get("opponent"),
+        opponent_owner:   r.get("opponent_owner"),
+        opponent_svg:     r.get("opponent_svg"),
+        winner:           r.get("winner"),
+        total_ticks:      r.get("total_ticks"),
+        created_at:       r.get("created_at"),
     }).collect())
 }
 

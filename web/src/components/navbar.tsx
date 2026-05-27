@@ -10,6 +10,7 @@ const NAV_ACCENTS = ["#FF3AF2", "#00F5D4", "#FFE600", "#FF6B35", "#7B2FFF"]
 
 const TANK_NAV = [
   { href: "/race",        label: "竞技场" },
+  { href: "/matches",     label: "公开对战" },
   { href: "/tournament",  label: "锦标赛" },
   { href: "/dashboard",   label: "排行榜" },
   { href: "/tanks",       label: "我的坦克" },

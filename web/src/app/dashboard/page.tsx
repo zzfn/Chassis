@@ -20,6 +20,23 @@ interface PlayerEntry {
   elo: number
   version?: number
   svg?: string
+  name_color?: string
+}
+
+function nameColorStyle(nameColor?: string): React.CSSProperties {
+  switch (nameColor) {
+    case "magenta": return { color: "#FF3AF2" }
+    case "cyan":    return { color: "#00F5D4" }
+    case "yellow":  return { color: "#FFE600" }
+    case "orange":  return { color: "#FF6B35" }
+    case "purple":  return {
+      background:           "linear-gradient(90deg, #7B2FFF, #FF3AF2, #00F5D4)",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor:  "transparent",
+      backgroundClip:       "text",
+    }
+    default: return { color: "#ffffff" }
+  }
 }
 
 const PERIOD_ACCENTS: Record<Period, string> = {
@@ -389,7 +406,7 @@ export default function DashboardPage() {
                     <TankAvatar name={p.agent_name} svg={p.svg} />
                     <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-white truncate">{p.agent_name}</span>
+                        <span className="font-black truncate" style={nameColorStyle(p.name_color)}>{p.agent_name}</span>
                         {p.version != null && (
                           <span
                             className="shrink-0 rounded-full border-2 px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-widest"

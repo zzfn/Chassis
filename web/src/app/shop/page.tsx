@@ -14,7 +14,7 @@ interface BulletSkin {
   name: string
   price: number
   color: string
-  shape: "circle" | "diamond" | "star"
+  shape: "circle" | "diamond" | "star" | "hexagon" | "lightning" | "orbit" | "sakura" | "rainbow"
   glow: boolean
 }
 
@@ -29,11 +29,16 @@ interface NameColor {
 // ── 商品数据 ──────────────────────────────────────────────────────────────────
 
 const BULLET_SKINS: BulletSkin[] = [
-  { id: "default", name: "默认",   price: 0,   color: "#fef08a", shape: "circle",  glow: false },
-  { id: "fire",    name: "火焰",   price: 80,  color: "#ff5500", shape: "circle",  glow: true  },
-  { id: "plasma",  name: "等离子", price: 80,  color: "#22d3ee", shape: "circle",  glow: true  },
-  { id: "void",    name: "虚空",   price: 120, color: "#a855f7", shape: "diamond", glow: true  },
-  { id: "gold",    name: "黄金",   price: 200, color: "#fbbf24", shape: "star",    glow: false },
+  { id: "default",   name: "默认",   price: 0,   color: "#fef08a", shape: "circle",    glow: false },
+  { id: "fire",      name: "火焰",   price: 80,  color: "#ff5500", shape: "circle",    glow: true  },
+  { id: "plasma",    name: "等离子", price: 80,  color: "#22d3ee", shape: "circle",    glow: true  },
+  { id: "void",      name: "虚空",   price: 120, color: "#a855f7", shape: "diamond",   glow: true  },
+  { id: "gold",      name: "黄金",   price: 200, color: "#fbbf24", shape: "star",      glow: false },
+  { id: "ice",       name: "冰晶",   price: 100, color: "#bae6fd", shape: "hexagon",   glow: true  },
+  { id: "lightning", name: "闪电",   price: 150, color: "#fef9c3", shape: "lightning", glow: true  },
+  { id: "toxic",     name: "毒素",   price: 180, color: "#4ade80", shape: "orbit",     glow: true  },
+  { id: "sakura",    name: "樱花",   price: 160, color: "#f472b6", shape: "sakura",    glow: true  },
+  { id: "rainbow",   name: "彩虹",   price: 300, color: "#ff0080", shape: "rainbow",   glow: false },
 ]
 
 const NAME_COLORS: NameColor[] = [
@@ -45,8 +50,22 @@ const NAME_COLORS: NameColor[] = [
   { id: "purple",  name: "紫色渐变", price: 150, color: "#7B2FFF", gradient: true },
 ]
 
+interface TrailSkin {
+  id: string
+  name: string
+  price: number
+  color: string
+  glow: boolean
+}
+
+const TRAIL_SKINS: TrailSkin[] = [
+  { id: "default", name: "默认",   price: 0,   color: "#ffffff", glow: false },
+  { id: "neon",    name: "霓虹",   price: 80,  color: "#00F5D4", glow: true  },
+  { id: "fire",    name: "火焰",   price: 100, color: "#FF6B35", glow: true  },
+  { id: "plasma",  name: "等离子", price: 120, color: "#a855f7", glow: true  },
+]
+
 const COMING_SOON = [
-  { id: "trail",     name: "坦克轨迹特效", desc: "在战场上留下炫彩光轨" },
   { id: "explosion", name: "爆炸动画皮肤", desc: "独特的击毁爆炸粒子效果" },
   { id: "title",     name: "专属称号",     desc: "在名字旁显示荣耀头衔" },
 ]
@@ -54,6 +73,7 @@ const COMING_SOON = [
 const SECTION_ACCENTS = {
   bullets:    "#FF6B35",
   names:      "#00F5D4",
+  trails:     "#4ade80",
   comingSoon: "#7B2FFF",
 }
 
@@ -133,6 +153,181 @@ function BulletPreview({ skin }: { skin: BulletSkin }) {
     )
   }
 
+  // 六边形子弹（冰晶）
+  if (skin.shape === "hexagon") {
+    return (
+      <svg
+        width="180" height="48"
+        viewBox="0 0 180 48"
+        className="rounded-xl"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        aria-label={`${skin.name}子弹预览`}
+      >
+        <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4 4" />
+
+        <ellipse cx="0" cy="24" rx="10" ry="4" fill={skin.color} opacity="0.35">
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 0 H 172" />
+          <animate attributeName="opacity" values="0;0.35;0" dur={dur} repeatCount="indefinite" />
+        </ellipse>
+
+        <polygon
+          points="7,0 3.5,6 -3.5,6 -7,0 -3.5,-6 3.5,-6"
+          fill={skin.color}
+          style={{ filter: `drop-shadow(0 0 6px ${skin.color})` }}
+        >
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" />
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0" to="360"
+            dur="1s"
+            repeatCount="indefinite"
+            additive="sum"
+          />
+        </polygon>
+      </svg>
+    )
+  }
+
+  // 闪电子弹
+  if (skin.shape === "lightning") {
+    return (
+      <svg
+        width="180" height="48"
+        viewBox="0 0 180 48"
+        className="rounded-xl"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        aria-label={`${skin.name}子弹预览`}
+      >
+        <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4 4" />
+
+        {/* 电弧粒子 */}
+        {([0.25, 0.6] as const).map((offset, i) => (
+          <circle key={i} r="1.5" fill="white" opacity="0">
+            <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" begin={`${-offset * 1.4}s`} />
+            <animate attributeName="opacity" values="0;1;0" dur="0.18s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="-5;5;-5" dur="0.18s" repeatCount="indefinite" />
+          </circle>
+        ))}
+
+        <path
+          d="M3,-8 L-2,0 L1,0 L-3,8 L2,0 L-1,0 Z"
+          fill={skin.color}
+          style={{ filter: `drop-shadow(0 0 8px ${skin.color}) drop-shadow(0 0 4px white)` }}
+        >
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" />
+          <animate attributeName="opacity" values="1;0.65;1" dur="0.15s" repeatCount="indefinite" />
+        </path>
+      </svg>
+    )
+  }
+
+  // 轨道子弹（毒素）
+  if (skin.shape === "orbit") {
+    return (
+      <svg
+        width="180" height="48"
+        viewBox="0 0 180 48"
+        className="rounded-xl"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        aria-label={`${skin.name}子弹预览`}
+      >
+        <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4 4" />
+
+        <ellipse cx="0" cy="24" rx="12" ry="5" fill={skin.color} opacity="0">
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 0 H 172" />
+          <animate attributeName="opacity" values="0;0.3;0" dur={dur} repeatCount="indefinite" />
+        </ellipse>
+
+        <g>
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" />
+          <g style={{ filter: `drop-shadow(0 0 4px ${skin.color})` }}>
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              from="0 0 0" to="360 0 0"
+              dur="0.5s"
+              repeatCount="indefinite"
+            />
+            <circle cx="9" cy="0" r="2" fill={skin.color} opacity="0.85" />
+            <circle cx="-4.5" cy="7.8" r="2" fill={skin.color} opacity="0.85" />
+            <circle cx="-4.5" cy="-7.8" r="2" fill={skin.color} opacity="0.85" />
+          </g>
+          <circle r="5" fill={skin.color} style={{ filter: `drop-shadow(0 0 6px ${skin.color})` }} />
+        </g>
+      </svg>
+    )
+  }
+
+  // 四瓣花形子弹（樱花）
+  if (skin.shape === "sakura") {
+    return (
+      <svg
+        width="180" height="48"
+        viewBox="0 0 180 48"
+        className="rounded-xl"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        aria-label={`${skin.name}子弹预览`}
+      >
+        <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4 4" />
+
+        {([0.2, 0.55, 0.85] as const).map((offset, i) => (
+          <circle key={i} r="2" fill={skin.color} opacity="0">
+            <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" begin={`${-offset * 1.4}s`} />
+            <animate attributeName="cy" values="-6;6;-6" dur="0.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;0.7;0" dur={dur} repeatCount="indefinite" begin={`${-offset * 1.4}s`} />
+          </circle>
+        ))}
+
+        <path
+          d="M0,-8 Q5,-5 8,0 Q5,5 0,8 Q-5,5 -8,0 Q-5,-5 0,-8 Z"
+          fill={skin.color}
+          style={{ filter: `drop-shadow(0 0 6px ${skin.color})` }}
+        >
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" />
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0" to="360"
+            dur="1.5s"
+            repeatCount="indefinite"
+            additive="sum"
+          />
+        </path>
+      </svg>
+    )
+  }
+
+  // 彩虹子弹
+  if (skin.shape === "rainbow") {
+    const rainbowColors = "#ff0080;#ff8c00;#ffe600;#00f5d4;#7b2fff;#ff3af2;#ff0080"
+    return (
+      <svg
+        width="180" height="48"
+        viewBox="0 0 180 48"
+        className="rounded-xl"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+        aria-label={`${skin.name}子弹预览`}
+      >
+        <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4 4" />
+
+        <ellipse cx="0" cy="24" rx="14" ry="5" opacity="0.5">
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 0 H 172" />
+          <animate attributeName="fill" values={rainbowColors} dur="1.2s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0;0.5;0" dur={dur} repeatCount="indefinite" />
+        </ellipse>
+
+        <circle
+          cx="0" cy="0" r="7"
+          style={{ filter: "drop-shadow(0 0 10px #ff0080)" }}
+        >
+          <animateMotion dur={dur} repeatCount="indefinite" path="M 8 24 H 172" />
+          <animate attributeName="fill" values={rainbowColors} dur="1.2s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+    )
+  }
+
   // 五角星子弹（黄金）
   const starPath = "M0,-9 L2.1,-3 L8.6,-3 L3.5,1.5 L5.5,8.5 L0,4.5 L-5.5,8.5 L-3.5,1.5 L-8.6,-3 L-2.1,-3 Z"
   return (
@@ -176,14 +371,12 @@ function BulletPreview({ skin }: { skin: BulletSkin }) {
 // ── 子弹商品卡 ────────────────────────────────────────────────────────────────
 
 function BulletCard({
-  skin, balance, owned, equipped, onBuy, onEquip,
+  skin, balance, owned, onBuy,
 }: {
   skin: BulletSkin
   balance: number
   owned: boolean
-  equipped: boolean
   onBuy: () => void
-  onEquip: () => void
 }) {
   const canAfford = balance >= skin.price
   const isFree    = skin.price === 0
@@ -197,17 +390,17 @@ function BulletCard({
       className="relative overflow-hidden rounded-2xl p-4 flex flex-col gap-3"
       style={{
         background: "rgba(255,107,53,0.07)",
-        border:     `3px solid ${equipped ? "#FF6B35" : "rgba(255,107,53,0.3)"}`,
-        boxShadow:  equipped ? "0 0 20px rgba(255,107,53,0.3), 4px 4px 0 #FF3AF2" : "none",
+        border:     `3px solid ${owned && !isFree ? "#FF6B35" : "rgba(255,107,53,0.3)"}`,
+        boxShadow:  owned && !isFree ? "0 0 20px rgba(255,107,53,0.2)" : "none",
       }}
     >
-      {equipped && (
+      {owned && !isFree && (
         <div
           className="absolute top-2 right-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"
           style={{ background: "#FF6B35", color: "#0D0D1A" }}
         >
           <Check className="size-3" />
-          装备中
+          已购买
         </div>
       )}
 
@@ -223,18 +416,12 @@ function BulletCard({
       </div>
 
       {isFree || owned ? (
-        <button
-          onClick={onEquip}
-          disabled={equipped}
-          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-150 disabled:opacity-50 disabled:cursor-default"
-          style={{
-            borderColor: equipped ? "#FF6B35" : "rgba(255,107,53,0.5)",
-            color:       equipped ? "#FF6B35" : "rgba(255,255,255,0.7)",
-            background:  equipped ? "rgba(255,107,53,0.15)" : "transparent",
-          }}
+        <div
+          className="w-full rounded-full border-2 py-2 text-center text-xs font-black uppercase tracking-widest opacity-40"
+          style={{ borderColor: "rgba(255,107,53,0.4)", color: "rgba(255,255,255,0.5)" }}
         >
-          {equipped ? "已装备" : "装备"}
-        </button>
+          {isFree ? "免费" : "已购买"}
+        </div>
       ) : (
         <button
           onClick={canAfford ? onBuy : undefined}
@@ -256,15 +443,13 @@ function BulletCard({
 // ── 名称颜色商品卡 ────────────────────────────────────────────────────────────
 
 function NameColorCard({
-  item, balance, owned, equipped, previewName, onBuy, onEquip,
+  item, balance, owned, previewName, onBuy,
 }: {
   item: NameColor
   balance: number
   owned: boolean
-  equipped: boolean
   previewName: string
   onBuy: () => void
-  onEquip: () => void
 }) {
   const canAfford = balance >= item.price
   const isFree    = item.price === 0
@@ -287,17 +472,17 @@ function NameColorCard({
       className="relative overflow-hidden rounded-2xl p-4 flex flex-col gap-3"
       style={{
         background: "rgba(0,245,212,0.07)",
-        border:     `3px solid ${equipped ? "#00F5D4" : "rgba(0,245,212,0.25)"}`,
-        boxShadow:  equipped ? "0 0 20px rgba(0,245,212,0.25), 4px 4px 0 #7B2FFF" : "none",
+        border:     `3px solid ${owned && !isFree ? "#00F5D4" : "rgba(0,245,212,0.25)"}`,
+        boxShadow:  owned && !isFree ? "0 0 20px rgba(0,245,212,0.2)" : "none",
       }}
     >
-      {equipped && (
+      {owned && !isFree && (
         <div
           className="absolute top-2 right-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"
           style={{ background: "#00F5D4", color: "#0D0D1A" }}
         >
           <Check className="size-3" />
-          装备中
+          已购买
         </div>
       )}
 
@@ -319,18 +504,12 @@ function NameColorCard({
       </div>
 
       {isFree || owned ? (
-        <button
-          onClick={onEquip}
-          disabled={equipped}
-          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-150 disabled:opacity-50 disabled:cursor-default"
-          style={{
-            borderColor: equipped ? "#00F5D4" : "rgba(0,245,212,0.4)",
-            color:       equipped ? "#00F5D4" : "rgba(255,255,255,0.7)",
-            background:  equipped ? "rgba(0,245,212,0.1)" : "transparent",
-          }}
+        <div
+          className="w-full rounded-full border-2 py-2 text-center text-xs font-black uppercase tracking-widest opacity-40"
+          style={{ borderColor: "rgba(0,245,212,0.4)", color: "rgba(255,255,255,0.5)" }}
         >
-          {equipped ? "已装备" : "装备"}
-        </button>
+          {isFree ? "免费" : "已购买"}
+        </div>
       ) : (
         <button
           onClick={canAfford ? onBuy : undefined}
@@ -340,6 +519,110 @@ function NameColorCard({
             borderColor: canAfford ? "#00F5D4" : "rgba(255,255,255,0.25)",
             color:       canAfford ? "#0D0D1A" : "rgba(255,255,255,0.45)",
             background:  canAfford ? "linear-gradient(135deg, #00F5D4, #7B2FFF)" : "rgba(255,255,255,0.08)",
+          }}
+        >
+          {canAfford ? "购买" : "星币不足"}
+        </button>
+      )}
+    </motion.div>
+  )
+}
+
+// ── 拖尾预览动画 ──────────────────────────────────────────────────────────────
+
+function TrailPreview({ skin }: { skin: TrailSkin }) {
+  const dur = "1.6s"
+  const dots = [0, 1, 2, 3, 4, 5]
+  return (
+    <svg width="180" height="48" viewBox="0 0 180 48" className="rounded-xl" style={{ background: "rgba(0,0,0,0.5)" }}>
+      <line x1="8" y1="24" x2="172" y2="24" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
+      {/* 拖尾点：依次以不同延迟沿轨道飞出，越早发射越淡越小 */}
+      {dots.map((d) => {
+        const opacity = 0.65 - d * 0.09
+        const r       = 4.5 - d * 0.5
+        return (
+          <circle key={d} r={Math.max(1, r)} fill={skin.color}
+            style={{ filter: skin.glow ? `drop-shadow(0 0 4px ${skin.color})` : "none" }}
+            opacity={0}
+          >
+            <animateMotion dur={dur} repeatCount="indefinite"
+              begin={`${-d * 0.18}s`}
+              path="M 8 24 H 172" />
+            <animate attributeName="opacity"
+              values={`0;${opacity};${opacity * 0.3};0`}
+              keyTimes="0;0.15;0.7;1"
+              dur={dur} repeatCount="indefinite"
+              begin={`${-d * 0.18}s`} />
+          </circle>
+        )
+      })}
+    </svg>
+  )
+}
+
+// ── 拖尾商品卡 ────────────────────────────────────────────────────────────────
+
+function TrailCard({
+  skin, balance, owned, onBuy,
+}: {
+  skin: TrailSkin
+  balance: number
+  owned: boolean
+  onBuy: () => void
+}) {
+  const canAfford = balance >= skin.price
+  const isFree    = skin.price === 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -4, scale: 1.02 }}
+      transition={{ duration: 0.2 }}
+      className="relative overflow-hidden rounded-2xl p-4 flex flex-col gap-3"
+      style={{
+        background: "rgba(74,222,128,0.07)",
+        border:     `3px solid ${owned && !isFree ? "#4ade80" : "rgba(74,222,128,0.3)"}`,
+        boxShadow:  owned && !isFree ? "0 0 20px rgba(74,222,128,0.2)" : "none",
+      }}
+    >
+      {owned && !isFree && (
+        <div
+          className="absolute top-2 right-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"
+          style={{ background: "#4ade80", color: "#0D0D1A" }}
+        >
+          <Check className="size-3" />
+          已购买
+        </div>
+      )}
+
+      <div className="flex justify-center">
+        <TrailPreview skin={skin} />
+      </div>
+
+      <div className="text-center">
+        <p className="text-sm font-black uppercase tracking-wider text-white">{skin.name}</p>
+        <p className="text-xs font-bold mt-0.5" style={{ color: "#4ade80" }}>
+          {isFree ? "免费" : `${skin.price} ⭐`}
+        </p>
+      </div>
+
+      {isFree || owned ? (
+        <div
+          className="w-full rounded-full border-2 py-2 text-center text-xs font-black uppercase tracking-widest opacity-40"
+          style={{ borderColor: "rgba(74,222,128,0.4)", color: "rgba(255,255,255,0.5)" }}
+        >
+          {isFree ? "免费" : "已购买"}
+        </div>
+      ) : (
+        <button
+          onClick={canAfford ? onBuy : undefined}
+          disabled={!canAfford}
+          className="w-full rounded-full border-2 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:hover:scale-100"
+          style={{
+            borderColor: canAfford ? "#4ade80" : "rgba(255,255,255,0.25)",
+            color:       canAfford ? "#0D0D1A" : "rgba(255,255,255,0.45)",
+            background:  canAfford ? "linear-gradient(135deg, #4ade80, #00F5D4)" : "rgba(255,255,255,0.08)",
           }}
         >
           {canAfford ? "购买" : "星币不足"}
@@ -437,13 +720,12 @@ function SectionHeader({
 // ── 主页面 ────────────────────────────────────────────────────────────────────
 
 export default function ShopPage() {
-  const [balance, setBalance]                     = useState(0)
-  const [ownedBullets, setOwnedBullets]           = useState<Set<string>>(new Set(["default"]))
-  const [ownedNameColors, setOwnedNameColors]     = useState<Set<string>>(new Set(["white"]))
-  const [equippedBullet, setEquippedBullet]       = useState("default")
-  const [equippedNameColor, setEquippedNameColor] = useState("white")
-  const [isLoggedIn, setIsLoggedIn]               = useState<boolean | null>(null)
-  const [previewName, setPreviewName]             = useState("TANK_NAME")
+  const [balance, setBalance]                 = useState(0)
+  const [ownedBullets, setOwnedBullets]       = useState<Set<string>>(new Set(["default"]))
+  const [ownedNameColors, setOwnedNameColors] = useState<Set<string>>(new Set(["white"]))
+  const [ownedTrails, setOwnedTrails]         = useState<Set<string>>(new Set(["default"]))
+  const [isLoggedIn, setIsLoggedIn]           = useState<boolean | null>(null)
+  const [previewName, setPreviewName]         = useState("TANK_NAME")
 
   useEffect(() => {
     const token = getCookie("token")
@@ -462,24 +744,18 @@ export default function ShopPage() {
       if (me && typeof me.credits === "number") setBalance(me.credits)
       if (me?.username) setPreviewName((me.username as string).toUpperCase())
       if (inv?.items) {
-        const items = inv.items as { item_type: string; item_id: string; equipped: boolean }[]
-        const bullets     = new Set<string>(["default"])
-        const nameColors  = new Set<string>(["white"])
-        let eqBullet      = "default"
-        let eqNameColor   = "white"
+        const items = inv.items as { item_type: string; item_id: string }[]
+        const bullets    = new Set<string>(["default"])
+        const nameColors = new Set<string>(["white"])
+        const trails     = new Set<string>(["default"])
         for (const item of items) {
-          if (item.item_type === "bullet") {
-            bullets.add(item.item_id)
-            if (item.equipped) eqBullet = item.item_id
-          } else if (item.item_type === "name_color") {
-            nameColors.add(item.item_id)
-            if (item.equipped) eqNameColor = item.item_id
-          }
+          if (item.item_type === "bullet")          bullets.add(item.item_id)
+          else if (item.item_type === "name_color") nameColors.add(item.item_id)
+          else if (item.item_type === "trail")      trails.add(item.item_id)
         }
         setOwnedBullets(bullets)
         setOwnedNameColors(nameColors)
-        setEquippedBullet(eqBullet)
-        setEquippedNameColor(eqNameColor)
+        setOwnedTrails(trails)
       }
     }).catch(() => setIsLoggedIn(true))
   }, [])
@@ -514,26 +790,19 @@ export default function ShopPage() {
     setOwnedNameColors(s => new Set([...s, item.id]))
   }
 
-  async function equipBullet(id: string) {
-    setEquippedBullet(id)
+  async function buyTrail(skin: TrailSkin) {
+    if (balance < skin.price) return
     const token = getCookie("token")
     if (!token) return
-    await fetch(`${apiBase}/api/shop/equip`, {
+    const res = await fetch(`${apiBase}/api/shop/buy`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ item_type: "bullet", item_id: id }),
+      body: JSON.stringify({ item_type: "trail", item_id: skin.id }),
     })
-  }
-
-  async function equipNameColor(id: string) {
-    setEquippedNameColor(id)
-    const token = getCookie("token")
-    if (!token) return
-    await fetch(`${apiBase}/api/shop/equip`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ item_type: "name_color", item_id: id }),
-    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (typeof data.credits === "number") setBalance(data.credits)
+    setOwnedTrails(s => new Set([...s, skin.id]))
   }
 
   return (
@@ -664,9 +933,7 @@ export default function ShopPage() {
                   skin={skin}
                   balance={balance}
                   owned={ownedBullets.has(skin.id)}
-                  equipped={equippedBullet === skin.id}
                   onBuy={() => buyBullet(skin)}
-                  onEquip={() => equipBullet(skin.id)}
                 />
               </motion.div>
             ))}
@@ -696,10 +963,8 @@ export default function ShopPage() {
                   item={item}
                   balance={balance}
                   owned={ownedNameColors.has(item.id)}
-                  equipped={equippedNameColor === item.id}
                   previewName={previewName}
                   onBuy={() => buyNameColor(item)}
-                  onEquip={() => equipNameColor(item.id)}
                 />
               </motion.div>
             ))}
@@ -707,14 +972,44 @@ export default function ShopPage() {
         </section>
 
         {/* ══════════════════════════════════════
-            SECTION 3 — COMING SOON
+            SECTION 3 — TRAIL SKINS
+        ══════════════════════════════════════ */}
+        <section className="mb-16">
+          <SectionHeader
+            title="TRAIL SKINS"
+            subtitle="移动时在战场上留下炫彩光轨"
+            accent={SECTION_ACCENTS.trails}
+            index={2}
+          />
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {TRAIL_SKINS.map((skin, i) => (
+              <motion.div
+                key={skin.id}
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.15 + i * 0.06 }}
+              >
+                <TrailCard
+                  skin={skin}
+                  balance={balance}
+                  owned={ownedTrails.has(skin.id)}
+                  onBuy={() => buyTrail(skin)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        </section>
+
+        {/* ══════════════════════════════════════
+            SECTION 4 — COMING SOON
         ══════════════════════════════════════ */}
         <section>
           <SectionHeader
             title="COMING SOON"
             subtitle="更多内容正在开发中，敬请期待"
             accent={SECTION_ACCENTS.comingSoon}
-            index={2}
+            index={3}
           />
 
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

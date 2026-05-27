@@ -71,8 +71,12 @@ pub struct TankSkin {
     pub svg: Option<String>,
     /// 用户的描述文字（存档用）
     pub description: Option<String>,
-    /// 子弹皮肤样式（default/fire/plasma/void/gold）
+    /// 子弹皮肤样式（default/fire/plasma/void/gold/ice/lightning/toxic/sakura/rainbow）
     pub bullet_style: Option<String>,
+    /// 名字颜色（white/magenta/cyan/yellow/orange/purple）
+    pub name_color: Option<String>,
+    /// 移动拖尾样式（default/neon/fire/plasma）
+    pub trail_style: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -162,7 +166,7 @@ impl ArenaEngine {
 
     pub fn run(mut self) -> BattleResult {
         let mut telemetry:  Vec<FrameData> = Vec::new();
-        let mut battle_log: Vec<String>    = Vec::new();
+        let mut battle_log: Vec<String> = Vec::new();
         let names: Vec<String> = self.agents.iter().map(|(t, _)| t.name.clone()).collect();
 
         battle_log.push(format!(
@@ -268,10 +272,16 @@ impl ArenaEngine {
                 self.agents[i].0.skill_cooldown = cd_max;
                 this_turn_cmds[i] = None;  // 技能命令不产生移动
 
-                // 寻找最近敌人
+                // 寻找最近敌人（Debuff 技能限制在 8 格以内）
+                const DEBUFF_RANGE: u32 = 8;
                 let me = &self.agents[i].0;
                 let nearest_enemy_id: Option<usize> = summaries.iter()
                     .filter(|s| s.alive && s.team_id != me.team_id)
+                    .filter(|s| {
+                        (s.x as i32 - me.x as i32).unsigned_abs()
+                            + (s.y as i32 - me.y as i32).unsigned_abs()
+                            <= DEBUFF_RANGE
+                    })
                     .min_by_key(|s| {
                         (s.x as i32 - me.x as i32).unsigned_abs() + (s.y as i32 - me.y as i32).unsigned_abs()
                     })

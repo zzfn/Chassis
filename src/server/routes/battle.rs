@@ -179,10 +179,32 @@ async fn get_match_frames(
     }
 }
 
+#[derive(Deserialize)]
+struct RecentBattlesParams {
+    #[serde(default = "default_limit")]
+    limit:  i64,
+    #[serde(default)]
+    offset: i64,
+}
+fn default_limit() -> i64 { 30 }
+
+async fn get_recent_battles(
+    State(state): State<AppState>,
+    Query(params): Query<RecentBattlesParams>,
+) -> impl IntoResponse {
+    let limit  = params.limit.clamp(1, 100);
+    let offset = params.offset.max(0);
+    match db::get_public_recent_battles(&state.pool, limit, offset).await {
+        Ok(battles) => axum::Json(battles).into_response(),
+        Err(e)      => json_err(500, &e.to_string()),
+    }
+}
+
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/battle",                   post(handle_battle))
         .route("/api/replay/:id",               get(get_replay))
         .route("/api/matches/:id/agent.json",   get(get_match_agent_json))
         .route("/api/matches/:id/agent/frames", get(get_match_frames))
+        .route("/api/battles/recent",           get(get_recent_battles))
 }

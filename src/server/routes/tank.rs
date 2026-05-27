@@ -541,7 +541,7 @@ async fn generate_skin(
         return json_err(400, "SVG 包含不允许的内容");
     }
 
-    let skin = db::TankSkin { svg: Some(svg), description: Some(description), bullet_style: None };
+    let skin = db::TankSkin { svg: Some(svg), description: Some(description), bullet_style: None, name_color: None, trail_style: None };
     match db::set_tank_skin(pool, user_id, &agent_name, &skin).await {
         Ok(_)  => axum::Json(skin).into_response(),
         Err(e) => json_err(500, &e.to_string()),
@@ -683,12 +683,21 @@ fn shop_item_price(item_type: &str, item_id: &str) -> Option<i32> {
         ("bullet", "plasma")         => Some(80),
         ("bullet", "void")           => Some(120),
         ("bullet", "gold")           => Some(200),
+        ("bullet", "ice")            => Some(100),
+        ("bullet", "lightning")      => Some(150),
+        ("bullet", "toxic")          => Some(180),
+        ("bullet", "sakura")         => Some(160),
+        ("bullet", "rainbow")        => Some(300),
         ("name_color", "white")      => Some(0),
         ("name_color", "magenta")    => Some(60),
         ("name_color", "cyan")       => Some(60),
         ("name_color", "yellow")     => Some(60),
         ("name_color", "orange")     => Some(100),
         ("name_color", "purple")     => Some(150),
+        ("trail", "default")         => Some(0),
+        ("trail", "neon")            => Some(80),
+        ("trail", "fire")            => Some(100),
+        ("trail", "plasma")          => Some(120),
         _ => None,
     }
 }
