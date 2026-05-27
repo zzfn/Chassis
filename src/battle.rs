@@ -96,6 +96,8 @@ pub struct BattleResult {
     pub js_stats: Vec<JsExecStats>,
     /// 胜利队伍 ID，None 表示平局/同归于尽（或单人模式）
     pub winner_team: Option<usize>,
+    /// 各坦克捡到的星星数 name -> count
+    pub star_scores: HashMap<String, u32>,
 }
 
 // ─── Arena Engine ────────────────────────────────────────────────────────
@@ -668,6 +670,10 @@ impl ArenaEngine {
             .map(|(_, sandbox)| sandbox.stats())
             .collect();
 
+        let star_scores: HashMap<String, u32> = self.agents.iter()
+            .map(|(t, _)| (t.name.clone(), t.score))
+            .collect();
+
         BattleResult {
             winner,
             winner_label,
@@ -679,6 +685,7 @@ impl ArenaEngine {
             skins: HashMap::new(),
             js_stats,
             winner_team,
+            star_scores,
         }
     }
 }

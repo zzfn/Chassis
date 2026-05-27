@@ -1489,6 +1489,16 @@ pub async fn save_pvp_battle(
     let new_ga = ga.update(&gb, sa);
     let new_gb = gb.update(&ga, sb);
 
+    // 星星注入：每颗星按段位递减加分（不扣对手，制造受控 ELO 通胀）
+    // 加分/颗 = max(0.5, 3.0 - (elo - 1000) / 300)
+    let star_bonus = |g: &Glicko2, name: &str| -> f64 {
+        let stars = result.star_scores.get(name).copied().unwrap_or(0) as f64;
+        let rate = (3.0 - (g.rating - GLICKO_BASE) / 300.0).max(0.0);
+        stars * rate
+    };
+    let new_ga = Glicko2 { rating: (new_ga.rating + star_bonus(&ga, challenger_name)).max(100.0), ..new_ga };
+    let new_gb = Glicko2 { rating: (new_gb.rating + star_bonus(&gb, opponent_name)).max(100.0),   ..new_gb };
+
     upsert_elo(&mut tx, challenger_id, challenger_name, &new_ga).await?;
     upsert_elo(&mut tx, opponent_id,   opponent_name,   &new_gb).await?;
 
