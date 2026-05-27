@@ -1080,9 +1080,8 @@ pub async fn get_random_agents(pool: &PgPool, exclude_user_id: Uuid, count: i64)
 
 // 按 ELO 距离最近匹配对手（每个用户取最新提交的 agent）
 pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_name: &str) -> Result<Option<AgentRow>, sqlx::Error> {
-    // 匹配优先级：① 近24h对战次数少的对手（避免反复刷同一人）
-    //             ② ELO 距离近的对手（公平匹配）
-    //             ③ 随机打破平局
+    // 匹配得分 = ELO 距离 + 150 × min(近24h对战次数, 3)
+    // 每打过一次等价于"距离增加 150"，最多惩罚 3 次，避免完全封死但仍优先新鲜对手
     let row = sqlx::query(r#"
         SELECT id, user_id, name, code, skill_type FROM (
             SELECT DISTINCT ON (a.user_id) a.id, a.user_id, a.name, a.code, a.skill_type
@@ -1091,16 +1090,19 @@ pub async fn get_random_opponent(pool: &PgPool, exclude_user_id: Uuid, agent_nam
             ORDER BY a.user_id, a.created_at DESC
         ) latest
         ORDER BY
-            (SELECT COUNT(*) FROM battles
-             WHERE created_at > NOW() - INTERVAL '24 hours'
-               AND (
-                 (challenger_id = $1 AND opponent_id = latest.user_id) OR
-                 (opponent_id   = $1 AND challenger_id = latest.user_id)
-               )
-            ),
             ABS(
                 COALESCE((SELECT elo FROM elo_ratings WHERE user_id = latest.user_id AND agent_name = latest.name), 1000.0)
                 - COALESCE((SELECT elo FROM elo_ratings WHERE user_id = $1 AND agent_name = $2), 1000.0)
+            )
+            + 150.0 * LEAST(
+                (SELECT COUNT(*) FROM battles
+                 WHERE created_at > NOW() - INTERVAL '24 hours'
+                   AND (
+                     (challenger_id = $1 AND opponent_id = latest.user_id) OR
+                     (opponent_id   = $1 AND challenger_id = latest.user_id)
+                   )
+                )::float,
+                3.0
             ),
             RANDOM()
         LIMIT 1
