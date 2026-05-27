@@ -1303,7 +1303,7 @@ pub async fn search_opponents(
 
 const GLICKO_SCALE: f64 = 173.7178;
 const GLICKO_BASE:  f64 = 1000.0;
-const GLICKO_TAU:   f64 = 0.5;    // 系统波动约束，越小越稳
+const GLICKO_TAU:   f64 = 0.7;    // 系统波动约束，越小越稳
 const GLICKO_EPS:   f64 = 1e-6;
 
 struct Glicko2 { rating: f64, rd: f64, volatility: f64 }
@@ -1350,11 +1350,16 @@ impl Glicko2 {
 
         let phi_star = (phi * phi + new_vol * new_vol).sqrt();
         let new_phi  = 1.0 / (1.0 / (phi_star * phi_star) + 1.0 / v).sqrt();
-        let new_mu   = mu + new_phi * new_phi * g * (score - e);
+        let raw_mu   = mu + new_phi * new_phi * g * (score - e);
+
+        // 大分差压缩：ELO 差距 > 200 时线性衰减到 30%，抑制刷弱鸡
+        let gap  = (self.rating - opp.rating).abs();
+        let damp = if gap > 200.0 { (1.0 - (gap - 200.0) / 500.0).max(0.3) } else { 1.0 };
+        let new_mu = mu + (raw_mu - mu) * damp;
 
         Glicko2 {
             rating:     (GLICKO_SCALE * new_mu + GLICKO_BASE).max(100.0),
-            rd:         (GLICKO_SCALE * new_phi).clamp(30.0, 350.0),
+            rd:         (GLICKO_SCALE * new_phi).clamp(60.0, 350.0),
             volatility: new_vol,
         }
     }
