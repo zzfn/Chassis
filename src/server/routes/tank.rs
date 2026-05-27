@@ -449,7 +449,21 @@ async fn handle_matchmake_2v2(
                 result.skins.insert(cc_name.clone(), skin);
             }
 
-            // 以挑战者 vs 第一个敌方为主场记录（兼容现有 save_pvp_battle 签名）
+            // winner_team=Some(0) → team0(挑战者+盟友)赢；Some(1) → team1(enemy1+enemy2)赢
+            // save_pvp_battle 用名字字符串判断胜负，需显式指定每对的胜者名
+            let main_winner = match result.winner_team {
+                Some(0) => c_name.clone(),
+                Some(1) => b_name.clone(),
+                _       => String::new(),
+            };
+            let ally_winner = match result.winner_team {
+                Some(0) => a_name.clone(),
+                Some(1) => cc_name.clone(),
+                _       => String::new(),
+            };
+            let display_winner = result.winner.clone();
+            result.winner = main_winner;
+
             let battle_id = match db::save_pvp_battle(pool, challenger_id, enemy1_user_id, &c_name, &b_name, &result).await {
                 Ok(id) => id,
                 Err(e) => return json_err(500, &e.to_string()),
@@ -457,14 +471,14 @@ async fn handle_matchmake_2v2(
 
             // 补存盟友 vs 第二个敌方，确保 ally 和 enemy2 的 Elo 也被更新
             if ally_user_id != challenger_id {
+                result.winner = ally_winner;
                 let _ = db::save_pvp_battle(pool, ally_user_id, enemy2_user_id, &a_name, &cc_name, &result).await;
             }
 
             axum::Json(serde_json::json!({
                 "id": battle_id.to_string(),
-                "winner": result.winner,
-                "winner_team": if result.winner.is_empty() { serde_json::Value::Null }
-                               else { serde_json::Value::String(result.winner.clone()) },
+                "winner": display_winner,
+                "winner_team": result.winner_team,
             })).into_response()
         }
         Ok(Err(e)) => json_err(500, &e),
