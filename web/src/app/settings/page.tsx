@@ -431,7 +431,7 @@ export default function SettingsPage() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group/name">
+                <div className="flex items-center gap-2">
                   <span
                     className="font-black text-3xl leading-none text-white truncate"
                     style={{ fontFamily: "var(--font-outfit)", textShadow: `0 0 14px ${avatarColor}80` }}
@@ -440,7 +440,7 @@ export default function SettingsPage() {
                   </span>
                   <button
                     onClick={() => { setNameInput(profile?.username ?? ""); setEditingName(true) }}
-                    className="opacity-0 group-hover/name:opacity-60 hover:!opacity-100 transition-opacity"
+                    className="opacity-40 hover:opacity-100 transition-opacity"
                     title="修改用户名"
                   >
                     <Pencil className="size-4 text-white" />
