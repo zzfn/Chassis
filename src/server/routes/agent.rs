@@ -445,12 +445,14 @@ async fn agent_challenge(
         Ok(Ok(p)) => p,
         _ => return json_err(503, "服务器繁忙，请稍后再试"),
     };
+    let map_seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as u64;
     let battle_result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
         let owned = vec![
             (c_name.as_str(), c_code.as_str(), c_skill),
             (o_name.as_str(), o_code.as_str(), o_skill),
         ];
-        let engine = ArenaEngine::new(owned, None)?;
+        let engine = ArenaEngine::new(owned, Some(map_seed))?;
         Ok(engine.run())
     }).await;
 
@@ -540,12 +542,14 @@ async fn agent_simulate(
         Ok(Ok(p)) => p,
         _ => return json_err(503, "服务器繁忙，请稍后再试"),
     };
+    let map_seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as u64;
     let result = tokio::task::spawn_blocking(move || -> Result<BattleResult, String> {
         let owned = vec![
             (name.as_str(),    code.as_str(),    SkillType::Shield),
             (op_name.as_str(), op_code.as_str(), SkillType::Shield),
         ];
-        let engine = ArenaEngine::new(owned, None)?;
+        let engine = ArenaEngine::new(owned, Some(map_seed))?;
         Ok(engine.run())
     }).await;
     match result {
