@@ -21,6 +21,30 @@ interface PlayerEntry {
   version?: number
   svg?: string
   name_color?: string
+  model?: string
+}
+
+const AI_ICONS: Record<string, string> = {
+  Claude:  "/ai-icons/claude.ico",
+  GPT:     "/ai-icons/gpt.ico",
+  Copilot: "/ai-icons/copilot.ico",
+  Gemini:  "/ai-icons/gemini.ico",
+  Cursor:  "/ai-icons/cursor.ico",
+}
+
+const AI_ALIASES: Record<string, string> = {
+  composer: "Cursor",
+  chatgpt:  "GPT",
+}
+
+function resolveAiIcon(model: string | undefined): string | null {
+  if (!model) return null
+  if (AI_ICONS[model]) return AI_ICONS[model]
+  const lower = model.toLowerCase()
+  const alias = Object.keys(AI_ALIASES).find(k => lower.includes(k))
+  if (alias) return AI_ICONS[AI_ALIASES[alias]]
+  const match = Object.keys(AI_ICONS).find(k => lower.includes(k.toLowerCase()))
+  return match ? AI_ICONS[match] : null
 }
 
 function nameColorStyle(nameColor?: string): React.CSSProperties {
@@ -424,8 +448,15 @@ export default function DashboardPage() {
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-white/40 truncate">
-                        {p.owner} · <span style={{ color: tier.color }}>{tier.label}</span> · {p.pvp_battles} 场
+                      <span className="flex items-center gap-1.5 text-xs text-white/40 truncate">
+                        {p.owner}
+                        {(() => {
+                          const icon = resolveAiIcon(p.model)
+                          return icon
+                            ? <img src={icon} width={12} height={12} className="rounded-sm inline-block shrink-0" alt={p.model} title={p.model} />
+                            : p.model ? <span title={p.model}>🤖</span> : null
+                        })()}
+                        · <span style={{ color: tier.color }}>{tier.label}</span> · {p.pvp_battles} 场
                       </span>
                     </div>
                   </div>

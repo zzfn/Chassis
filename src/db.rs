@@ -1114,6 +1114,7 @@ pub struct PlayerEntry {
     pub version: i64,
     pub svg: Option<String>,
     pub name_color: Option<String>,
+    pub model: Option<String>,
 }
 
 pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<PlayerEntry>, sqlx::Error> {
@@ -1128,9 +1129,10 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             COUNT(b.id) FILTER (WHERE b.winner != la.name)     AS pvp_losses,
             COALESCE(er.elo, 1000.0)                            AS elo,
             la.version                                          AS version,
-            ts.skin                                             AS skin
+            ts.skin                                             AS skin,
+            la.submitted_by                                     AS model
         FROM (
-            SELECT DISTINCT ON (user_id, name) id, user_id, name,
+            SELECT DISTINCT ON (user_id, name) id, user_id, name, submitted_by,
                 (SELECT COUNT(*) FROM agents a2 WHERE a2.user_id = agents.user_id AND a2.name = agents.name) AS version
             FROM agents
             ORDER BY user_id, name, created_at DESC
@@ -1145,7 +1147,7 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
           )
         LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
         LEFT JOIN tank_skins  ts ON ts.user_id = la.user_id AND ts.agent_name = la.name
-        GROUP BY la.id, la.name, u.username, er.elo, la.version, ts.skin
+        GROUP BY la.id, la.name, u.username, er.elo, la.version, ts.skin, la.submitted_by
         ORDER BY elo DESC, pvp_wins DESC, pvp_battles DESC
     "#).bind(since).fetch_all(pool).await?;
     Ok(rows.iter().map(|r| {
@@ -1163,6 +1165,7 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
             version:     r.get("version"),
             svg,
             name_color,
+            model: r.try_get("model").ok(),
         }
     }).collect())
 }
@@ -1292,6 +1295,7 @@ pub async fn search_opponents(
         version:     r.get("version"),
         svg:         None,
         name_color:  None,
+        model:       None,
     }).collect())
 }
 
