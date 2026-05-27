@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import { ArrowLeft, Copy, Check, Loader2, CheckCircle, XCircle, Shield, Swords, Share2, X, Settings, User, Lock } from "lucide-react"
+import { ArrowLeft, Copy, Check, Loader2, CheckCircle, XCircle, Shield, Swords, Share2, X, Settings, User, Lock, Shuffle } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
@@ -263,21 +263,20 @@ function BulletFirePreview({ bulletStyle, skinSvg }: { bulletStyle: string; skin
   )
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, onDark = true }: { text: string; onDark?: boolean }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
     await navigator.clipboard.writeText(text).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+  const iconCls = onDark ? "size-4 text-white" : "size-4 text-black"
   return (
     <button
       onClick={copy}
       className="border-2 border-black p-1.5 hover:bg-[#FFD93D] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
     >
-      {copied
-        ? <Check className="size-4 text-white" />
-        : <Copy className="size-4 text-white" />}
+      {copied ? <Check className={iconCls} /> : <Copy className={iconCls} />}
     </button>
   )
 }
@@ -325,6 +324,8 @@ export default function TankDetailPage() {
   const [skinSaving, setSkinSaving] = useState(false)
   const [skinSaved, setSkinSaved] = useState(false)
   const [skinError, setSkinError] = useState<string | null>(null)
+  const [rerolling, setRerolling] = useState(false)
+  const [rerollError, setRerollError] = useState<string | null>(null)
   const [ownedBullets, setOwnedBullets] = useState<Set<string>>(new Set(["default"]))
 
   // 分享弹窗
@@ -333,6 +334,24 @@ export default function TankDetailPage() {
   const [challengeError, setChallengeError] = useState<string | null>(null)
 
   const isOwner = tank ? tank.owner === (getCookie("username") ?? "") : false
+
+  async function handleReroll() {
+    const token = getCookie("token")
+    if (!token) { router.push("/login"); return }
+    setRerolling(true); setRerollError(null)
+    try {
+      const res = await fetch(`${apiBase}/api/tanks/${id}/skill/reroll`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "抽取失败")
+      setTank(prev => prev ? { ...prev, skill_type: data.skill_type } : prev)
+    } catch (err) {
+      setRerollError(err instanceof Error ? err.message : "抽取失败")
+    } finally {
+      setRerolling(false)
+    }
+  }
 
   async function handleChallenge() {
     if (!tank) return
@@ -600,7 +619,7 @@ export default function TankDetailPage() {
               onFocus={e => e.currentTarget.select()}
               className="flex-1 truncate bg-transparent px-3 py-2 font-mono text-xs focus:outline-none"
             />
-            <CopyButton text={shareUrl} />
+            <CopyButton text={shareUrl} onDark={false} />
           </div>
         </div>
       </div>
@@ -1320,6 +1339,24 @@ ${guideUrl}
                           <p className="text-xs font-bold text-black/60">{sk.desc}</p>
                         </div>
                       </div>
+
+                      {/* 随机抽取 */}
+                      {isOwner && (
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={handleReroll}
+                            disabled={rerolling}
+                            className="flex items-center justify-center gap-2 border-4 border-black bg-[#FFD93D] py-2 text-sm font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-40 transition-all duration-100"
+                          >
+                            {rerolling
+                              ? <><Loader2 className="size-4 animate-spin" />抽取中…</>
+                              : <><Shuffle className="size-4" />随机技能 · ⭐ 100</>}
+                          </button>
+                          {rerollError && (
+                            <p className="border-4 border-black bg-[#FF6B6B] px-3 py-2 text-xs font-black text-white shadow-[2px_2px_0px_0px_#000]">{rerollError}</p>
+                          )}
+                        </div>
+                      )}
 
                       {/* 所有技能一览 */}
                       <p className="text-[10px] font-black uppercase tracking-widest text-black/40">所有技能</p>

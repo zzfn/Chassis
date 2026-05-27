@@ -280,7 +280,6 @@ function TanksContent() {
   const [creating,      setCreating]      = useState(false)
   const [creatingStep,  setCreatingStep]  = useState<"" | "agent" | "skin">("")
   const [createError,   setCreateError]   = useState<string | null>(null)
-  const [rerollingId,   setRerollingId]   = useState<string | null>(null)
   const [activatingId,  setActivatingId]  = useState<string | null>(null)
 
   const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
@@ -423,27 +422,6 @@ function TanksContent() {
       setError(err instanceof Error ? err.message : "激活失败")
     } finally {
       setActivatingId(null)
-    }
-  }
-
-  async function handleReroll(tankId: string) {
-    const token = getCookie("token")
-    if (!token) { router.push("/login"); return }
-    setRerollingId(tankId)
-    try {
-      const res  = await fetch(`${apiBase}/api/tanks/${tankId}/skill/reroll`, {
-        method: "POST", headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? "抽取失败")
-      setTanks(prev => prev.map(t =>
-        t.agent_id === tankId ? { ...t, skill_type: data.skill_type } : t
-      ))
-      setCredits(data.credits)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "抽取失败")
-    } finally {
-      setRerollingId(null)
     }
   }
 
@@ -727,18 +705,7 @@ function TanksContent() {
                     >
                       详情
                     </button>
-                    <button
-                      onClick={() => handleReroll(tank.agent_id)}
-                      disabled={rerollingId === tank.agent_id || (credits !== null && credits < 100)}
-                      title={credits !== null && credits < 100 ? "积分不足（需 100）" : "花费 ⭐ 100 积分随机抽取新技能"}
-                      className="flex items-center gap-1.5 rounded-full border-4 border-dashed px-4 py-2 text-sm font-black uppercase tracking-widest transition-all duration-150 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ borderColor: "#FFE600", color: "#FFE600" }}
-                    >
-                      {rerollingId === tank.agent_id
-                        ? <><Loader2 className="size-3.5 animate-spin" /><span>抽取中</span></>
-                        : <><Shuffle className="size-3.5" /><span>⭐ 100</span></>}
-                    </button>
-                    {tank.is_active ? (
+{tank.is_active ? (
                       <button
                         onClick={() => router.push("/race")}
                         className="flex flex-1 items-center justify-center gap-2 rounded-full border-4 border-[#FFE600] py-2 text-sm font-black uppercase tracking-widest text-white transition-all duration-200 hover:scale-[1.03] active:scale-95"
