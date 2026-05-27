@@ -947,7 +947,7 @@ export default function ReplayPage() {
         error: (e) => console.error('VideoEncoder:', e),
       })
       encoder.configure({
-        codec: 'avc1.42001f',
+        codec: 'avc1.420028',
         width: w, height: h,
         bitrate: 4_000_000,
         framerate: 5,
