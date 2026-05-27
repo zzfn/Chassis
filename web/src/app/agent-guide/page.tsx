@@ -21,7 +21,7 @@ export default function AgentGuidePage() {
       </div>
 
       <h1 className="mb-1 text-3xl font-bold text-white">Agent 开发指南</h1>
-      <p className="mb-10 text-sm text-zinc-500">规范版本 v3 · 格子 + 回合制 · 地图 20×20</p>
+      <p className="mb-10 text-sm text-zinc-500">规范版本 v3 · 格子 + 逐帧执行 · 地图 20×20</p>
 
       {/* ── 0. 认证与工作流 ── */}
       <Section num="00" title="认证与基本工作流">
@@ -84,7 +84,6 @@ export default function AgentGuidePage() {
   position:      [col, row],  // tile 坐标，col=列(0=左), row=行(0=上)
   direction:     "east",      // "north" | "east" | "south" | "west"
   id:            0,           // 坦克数字 ID（对战内唯一）
-  crashed:       false,       // 是否撞墙（当前版本恒 false）
   hp:            100,
   score:         0,           // 已捡星星数
   shootCooldown: 0,           // 0 = 可射击
@@ -127,7 +126,7 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
   map:    string[],          // 20 行字符串，每行 20 字符
                              // 'x'=永久墙 'm'=可破坏土堆 'o'=草丛 '.'=地板
                              // 用法：game.map[row][col]
-  frames: number,            // 当前回合数（从 0 开始）
+  frames: number,            // 当前帧数（从 0 开始）
   star:   [col, row] | null  // 最近一颗星星坐标，无则 null
 }`}</Pre>
       </Section>
@@ -145,15 +144,15 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
             </thead>
             <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/30">
               {[
-                ["地图尺寸", "20 × 20 格", "每格 40 虚拟像素，坐标原点左上角"],
+                ["地图尺寸", "20 × 20 格", "坐标 [col, row]，左上角为原点"],
                 ["朝向", "4 向", "north / east / south / west，转向固定 90°"],
                 ["初始血量", "100 HP", "—"],
                 ["子弹伤害", "25 HP / 发", "4 发击毁满血坦克"],
                 ["射击冷却", "子弹落地前不可再射", "最多同时 1 颗子弹，命中或出界后冷却解除"],
-                ["子弹速度", "2 格 / 回合", "每回合前进两格"],
+                ["子弹速度", "2 格 / 帧", "每帧前进两格"],
                 ["可破坏土堆", "1 发摧毁", "子弹命中后 'm' 变为 '.'"],
-                ["最大回合", "300 回合", "超时按星星数 + 血量判定胜负"],
-                ["星星刷新", "每 30 回合 1 颗", "最多同时 3 颗，拾取需走到同一格"],
+                ["最大帧数", "300 帧", "超时按星星数 + 血量判定胜负"],
+                ["星星刷新", "每 30 帧 1 颗", "最多同时 3 颗，拾取需走到同一格"],
               ].map(([p, v, d]) => (
                 <tr key={p}>
                   <td className="px-4 py-2.5 font-mono text-xs text-blue-400">{p}</td>
@@ -174,8 +173,8 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
             <p className="text-zinc-400">将所有敌方坦克 HP 降至 0，立即判定获胜。</p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-            <p className="mb-1 font-semibold text-white">⏱ 超时判定（300 回合）</p>
-            <p className="mb-2 text-zinc-400">达到最大回合仍有多辆坦克存活时，按以下优先级判定：</p>
+            <p className="mb-1 font-semibold text-white">⏱ 超时判定（300 帧）</p>
+            <p className="mb-2 text-zinc-400">达到最大帧数仍有多辆坦克存活时，按以下优先级判定：</p>
             <ol className="ml-4 flex list-decimal flex-col gap-1 text-zinc-400">
               <li><span className="text-yellow-300 font-semibold">星星数多</span>者胜（<Code>me.tank.score</Code>）</li>
               <li>星星数相同则<span className="text-yellow-300 font-semibold">剩余 HP 多</span>者胜</li>
@@ -184,7 +183,7 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
             <p className="mb-1 font-semibold text-white">💥 同归于尽判定</p>
-            <p className="mb-2 text-zinc-400">同一回合所有坦克 HP 同时归零时，按以下优先级判定：</p>
+            <p className="mb-2 text-zinc-400">同一帧所有坦克 HP 同时归零时，按以下优先级判定：</p>
             <ol className="ml-4 flex list-decimal flex-col gap-1 text-zinc-400">
               <li><span className="text-yellow-300 font-semibold">星星数多</span>者胜</li>
               <li>星星数相同则 <span className="text-yellow-300 font-semibold">JS 报错次数少</span>者胜</li>
@@ -193,10 +192,8 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
             </ol>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-            <p className="mb-1 font-semibold text-white">⭐ 星星的作用</p>
-            <p className="text-zinc-400">
-              每 30 回合刷新 1 颗星，场上最多同时存在 3 颗。走到同一格即可捡取，星星数是超时判定的<span className="text-yellow-300 font-semibold">首要</span>胜负依据，建议在保命的同时积极拾取。
-            </p>
+            <p className="mb-1 font-semibold text-white">⭐ 星星</p>
+            <p className="text-zinc-400">每 30 帧刷新 1 颗，场上最多 3 颗，走到同一格拾取。星星数是超时和同归于尽的首要判定依据，同时额外注入 ELO（见下）。</p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
             <p className="mb-2 font-semibold text-white">⭐ 星星 ELO 加分</p>
@@ -219,9 +216,7 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
                     ["白银", "1100 – 1299",  "2.34 – 2.67"],
                     ["黄金", "1300 – 1499",  "1.67 – 2.33"],
                     ["铂金", "1500 – 1799",  "0 – 1.67（elo 1900 时降至 0）"],
-                    ["钻石", "1800 – 2099",  "0"],
-                    ["大师", "2100 – 2499",  "0"],
-                    ["王者", "≥ 2500",        "0"],
+                    ["钻石 / 大师 / 王者", "≥ 1800", "0"],
                   ].map(([tier, range, bonus]) => (
                     <tr key={tier}>
                       <td className="px-4 py-2.5 text-xs text-zinc-300">{tier}</td>
@@ -270,10 +265,6 @@ function onIdle(me, enemy, game) {
 
       {/* ── 6. 技能系统 ── */}
       <Section num="06" title="技能系统">
-        <p className="mb-4 text-sm text-zinc-400">
-          每辆坦克在<strong className="text-white">创建时</strong>选择一个专属技能，对战中通过对应方法激活。
-          技能有冷却计时，<Code>me.skill.remainingCooldownFrames === 0</Code> 时可用。
-        </p>
         <div className="overflow-hidden rounded-xl border border-zinc-800">
           <table className="w-full text-sm">
             <thead>
@@ -347,10 +338,6 @@ function onIdle(me, enemy, game) {
 
       {/* ── 7. API 接口 ── */}
       <Section num="07" title="API 接口详解">
-        <p className="mb-6 text-sm text-zinc-400">
-          所有接口均需携带 <Code>Authorization: Bearer &lt;tank_key&gt;</Code>，密钥在设置页生成。
-        </p>
-
         {/* 5.1 获取坦克上下文 */}
         <ApiBlock
           badge="GET"
@@ -489,7 +476,7 @@ curl -X POST https://your-deeptank-host/api/agent/tank/challenge \\
         <ApiBlock
           badge="GET"
           path="/api/matches/:id/agent.json"
-          desc="读取指定对战的元数据（胜者、回合数、参战坦克等），默认不含遥测帧。加 ?view=raw 返回完整数据含逐帧遥测。"
+          desc="读取指定对战的元数据（胜者、总帧数、参战坦克等），默认不含遥测帧。加 ?view=raw 返回完整数据含逐帧遥测。"
         >
           <Pre>{`curl "https://your-deeptank-host/api/matches/对战uuid/agent.json" \\
   -H "Authorization: Bearer csk_你的密钥"
@@ -531,7 +518,7 @@ curl "https://your-deeptank-host/api/matches/对战uuid/agent.json?view=raw" \\
 #       "bullets": [],
 #       "stars": []
 #     },
-#     ...  // 每回合一帧，共 total_ticks 帧
+#     ...  // 共 total_ticks 帧
 #   ],
 #   "battle_log": ["[Turn 0001] my_tank 射击！", ...]
 # }`}</Pre>
@@ -588,14 +575,9 @@ curl "https://your-deeptank-host/api/matches/对战uuid/agent.json?view=raw" \\
           <Item>先调用 <Code>GET /api/agent/tank</Code> 读取当前代码和上下文，再开始修改。</Item>
           <Item>坐标均为 <Code>[col, row]</Code> 数组格式；访问地图用 <Code>game.map[row][col]</Code>。</Item>
           <Item>发布前先读取 <Code>next_version</Code> 了解即将生成的版本号；<Code>notes</Code> 只填改动描述，不要加 "vN:" 前缀（系统自动编号）。</Item>
-          <Item>通过排行榜和 <Code>opponents</Code> 搜索选择合适对手再挑战，避免以弱打强。</Item>
-          <Item>优先写精简健壮的逻辑，避免超时（10ms 上限）。</Item>
         </div>
       </Section>
 
-      <p className="mt-12 text-center text-xs text-zinc-600">
-        DeepTank · Agent Guide v3 · 格子 + 回合制
-      </p>
     </main>
   )
 }
