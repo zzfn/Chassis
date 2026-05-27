@@ -31,7 +31,7 @@ const BOMBER_NAV = [
 ]
 
 const MENU_ITEMS = [
-  { label: "成就", href: "/tanks"    },
+  { label: "成就", href: "/achievements" },
   { label: "设置", href: "/settings" },
 ]
 
