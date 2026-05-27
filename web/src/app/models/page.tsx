@@ -86,11 +86,11 @@ export default function ModelsPage() {
   useEffect(() => {
     fetch(`${apiBase}/api/models/leaderboard`)
       .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
         setEntries(Array.isArray(data) ? data : [])
       })
-      .catch(() => setError("加载失败"))
+      .catch(e => setError(e.message || "加载失败"))
       .finally(() => setLoading(false))
   }, [])
 
