@@ -674,6 +674,13 @@ async fn get_leaderboard(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+async fn get_model_leaderboard(State(state): State<AppState>) -> impl IntoResponse {
+    match db::list_model_leaderboard(&state.pool).await {
+        Ok(entries) => axum::Json(entries).into_response(),
+        Err(e)      => json_err(500, &e.to_string()),
+    }
+}
+
 // ── 商店 ─────────────────────────────────────────────────────────────────────
 
 fn shop_item_price(item_type: &str, item_id: &str) -> Option<i32> {
@@ -788,6 +795,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/matchmake",               post(handle_matchmake))
         .route("/api/matchmake/2v2",           post(handle_matchmake_2v2))
         .route("/api/leaderboard",             get(get_leaderboard))
+        .route("/api/models/leaderboard",      get(get_model_leaderboard))
         .route("/api/shop/inventory",          get(shop_inventory))
         .route("/api/shop/buy",                post(shop_buy))
         .route("/api/shop/equip",              post(shop_equip))

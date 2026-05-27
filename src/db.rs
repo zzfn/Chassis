@@ -1167,6 +1167,61 @@ pub async fn list_players(pool: &PgPool, since: DateTime<Utc>) -> Result<Vec<Pla
     }).collect())
 }
 
+#[derive(Debug, Serialize)]
+pub struct ModelEntry {
+    pub model: String,
+    pub tank_count: i64,
+    pub user_count: i64,
+    pub avg_elo: f64,
+    pub total_elo: f64,
+    pub total_wins: i64,
+    pub total_battles: i64,
+}
+
+pub async fn list_model_leaderboard(pool: &PgPool) -> Result<Vec<ModelEntry>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query(r#"
+        SELECT
+            la.submitted_by                                              AS model,
+            COUNT(DISTINCT la.user_id::text || '|' || la.name)          AS tank_count,
+            COUNT(DISTINCT la.user_id)                                   AS user_count,
+            COALESCE(AVG(er.elo), 1000.0)                               AS avg_elo,
+            COALESCE(SUM(er.elo), 0)                                    AS total_elo,
+            COALESCE(SUM(pvp.pvp_wins), 0)::BIGINT                     AS total_wins,
+            COALESCE(SUM(pvp.pvp_battles), 0)::BIGINT                  AS total_battles
+        FROM (
+            SELECT DISTINCT ON (user_id, name) id, user_id, name, submitted_by
+            FROM agents
+            WHERE submitted_by IS NOT NULL AND submitted_by != ''
+            ORDER BY user_id, name, created_at DESC
+        ) la
+        LEFT JOIN elo_ratings er ON er.user_id = la.user_id AND er.agent_name = la.name
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(b.id)                                             AS pvp_battles,
+                COUNT(b.id) FILTER (WHERE b.winner = la.name)          AS pvp_wins
+            FROM battles b
+            WHERE b.challenger_id IS NOT NULL
+              AND (
+                (b.challenger_id = la.user_id AND b.agent_name = la.name)
+                OR
+                (b.opponent_id   = la.user_id AND b.opponent   = la.name)
+              )
+        ) pvp ON true
+        GROUP BY la.submitted_by
+        ORDER BY avg_elo DESC
+    "#).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| ModelEntry {
+        model:         r.get("model"),
+        tank_count:    r.get("tank_count"),
+        user_count:    r.get("user_count"),
+        avg_elo:       r.get("avg_elo"),
+        total_elo:     r.get("total_elo"),
+        total_wins:    r.get("total_wins"),
+        total_battles: r.get("total_battles"),
+    }).collect())
+}
+
 pub async fn get_recent_matches(
     pool: &PgPool,
     user_id: Uuid,
