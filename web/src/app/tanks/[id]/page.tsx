@@ -6,6 +6,7 @@ import Link from "next/link"
 import dynamic from "next/dynamic"
 import { ArrowLeft, Copy, Check, Loader2, CheckCircle, XCircle, Shield, Swords, Share2, X, Settings, User, Lock, Shuffle } from "lucide-react"
 import { getCookie, getUserId } from "@/lib/cookie"
+import { getEloFull } from "@/lib/elo"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
 
@@ -141,18 +142,6 @@ function getAchievements(wins: number, losses: number, battles: number): Achieve
   return list
 }
 
-function getRankInfo(elo: number) {
-  const tiers = [
-    { min: 1800, max: 2200, tier: "钻石",  division: "I",   color: "#818cf8" },
-    { min: 1500, max: 1800, tier: "铂金",  division: "I",   color: "#67e8f9" },
-    { min: 1300, max: 1500, tier: "黄金",  division: "II",  color: "#fbbf24" },
-    { min: 1100, max: 1300, tier: "白银",  division: "III", color: "#a1a1aa" },
-    { min:    0, max: 1100, tier: "青铜",  division: "IV",  color: "#c2874f" },
-  ]
-  const t = tiers.find(t => elo >= t.min) ?? tiers[tiers.length - 1]
-  const progress = Math.round(((elo - t.min) / (t.max - t.min)) * 100)
-  return { tier: t.tier, division: t.division, score: Math.round(elo), progress: Math.min(progress, 99), color: t.color }
-}
 
 function TankAvatar({ name, skin, size = "md" }: { name: string; skin?: TankSkin; size?: "sm" | "md" | "lg" }) {
   const hue = [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
@@ -664,7 +653,7 @@ export default function TankDetailPage() {
   )
 
   const winRate = tank.pvp_battles > 0 ? Math.round((tank.pvp_wins / tank.pvp_battles) * 100) : 0
-  const rank = getRankInfo(tank.elo ?? 1000)
+  const rank = getEloFull(tank.elo ?? 1000, tank.pvp_battles ?? 0)
   const achievements = getAchievements(tank.pvp_wins, tank.pvp_losses, tank.pvp_battles)
 
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/tanks/${id}` : ""
@@ -695,7 +684,7 @@ export default function TankDetailPage() {
           <div>
             <p className="text-2xl font-black uppercase leading-tight">{tank.agent_name}</p>
             <div className="flex items-center gap-1.5 text-sm font-bold" style={{ color: rank.color }}>
-              <Shield className="size-3.5 stroke-[3px]" /> {rank.tier} {rank.division}
+              <Shield className="size-3.5 stroke-[3px]" /> {rank.tierName} {rank.subLevel}
             </div>
             <p className="text-xs font-bold text-black/60">{tank.pvp_wins}胜 · {tank.pvp_losses}负 · 胜率 {winRate}%</p>
           </div>
@@ -769,7 +758,7 @@ export default function TankDetailPage() {
               {/* 统计网格 */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 border-4 border-black shadow-[6px_6px_0px_0px_#000]">
                 {[
-                  ["RANK",    `${rank.tier} ${rank.division}`, rank.color, true],
+                  ["RANK",    `${rank.tierName} ${rank.subLevel}`, rank.color, true],
                   ["SCORE",   rank.score.toString(),           rank.color, true],
                   ["RECORD",  `${tank.pvp_wins}-${tank.pvp_losses}-0`, rank.color, true],
                   ["WIN RATE",`${winRate}%`,                   "#1a1a1a", false],
@@ -819,7 +808,7 @@ export default function TankDetailPage() {
                 className="flex items-center gap-1.5 rounded-full border-4 border-black bg-white px-3 py-1 text-xs font-black shadow-[3px_3px_0px_0px_#000]"
                 style={{ color: rank.color }}
               >
-                <Shield className="size-3.5 stroke-[3px]" /> {rank.tier} {rank.division}
+                <Shield className="size-3.5 stroke-[3px]" /> {rank.tierName} {rank.subLevel}
               </div>
             </div>
           </div>
@@ -955,7 +944,7 @@ export default function TankDetailPage() {
               <p className="mb-1 text-xs font-black uppercase tracking-widest text-black/60">段位</p>
               <div className="flex items-center gap-2">
                 <Shield className="size-5 stroke-[3px]" style={{ color: rank.color }} />
-                <span className="text-xl font-black">{rank.tier} {rank.division}</span>
+                <span className="text-xl font-black">{rank.tierName} {rank.subLevel}</span>
               </div>
               <div className="mt-3 border-2 border-black h-4 bg-white overflow-hidden">
                 <div
