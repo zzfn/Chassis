@@ -40,6 +40,7 @@ interface BattleResult {
   battle_log: string[]
   skins?: Record<string, { svg?: string; bullet_style?: string; trail_style?: string; name_color?: string }>
   js_stats?: JsExecStats[]
+  created_at?: string
 }
 
 // ── 拖尾样式 ──────────────────────────────────────────────────────
@@ -865,7 +866,6 @@ export default function ReplayPage() {
   const [bgm,       setBgm]       = useState(true)
   const [recording, setRecording] = useState(false)
   const [fps,       setFps]       = useState<number | null>(null)
-  const [loadedAt]                = useState(() => new Date())
   const [shared,    setShared]    = useState(false)
   const [exportPct, setExportPct] = useState<number | null>(null)
 
@@ -1124,7 +1124,7 @@ export default function ReplayPage() {
                 </>
               )}
             </h1>
-            <p className="mt-1 text-xs font-medium text-white/35">{result} · {loadedAt.toLocaleString()}</p>
+            <p className="mt-1 text-xs font-medium text-white/35">{result}{data?.created_at ? ` · ${new Date(data.created_at).toLocaleString()}` : ''}</p>
           </div>
 
           {/* Stat pills */}
