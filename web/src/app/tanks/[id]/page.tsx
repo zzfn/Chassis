@@ -405,7 +405,9 @@ export default function TankDetailPage() {
   const [challenging, setChallenging] = useState(false)
   const [challengeError, setChallengeError] = useState<string | null>(null)
 
-  const isOwner = tank ? tank.owner_id === (getUserId() ?? "") : false
+  const isOwner = tank
+    ? (tank.owner_id ? tank.owner_id === (getUserId() ?? "") : tank.owner === (getCookie("username") ?? ""))
+    : false
 
   async function handleReroll() {
     const token = getCookie("token")
