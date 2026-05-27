@@ -419,7 +419,10 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
         const sp = PIXI.Sprite.from(svgUrl(
           `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -14 40 28" width="200" height="140">${skin.svg}</svg>`
         ))
-        sp.width = TS * 1.25; sp.height = TS * 0.875; sp.anchor.set(0.5)
+        // SVG 是 200×140，目标尺寸 TS*1.25 × TS*0.875 = 35×24.5
+        // 用 scale.set 而非 width/height 赋值，避免异步加载时 texture.width=1 导致拉伸
+        sp.scale.set(TS * 1.25 / 200)
+        sp.anchor.set(0.5)
         body.addChild(sp)
       } else {
         const teamId = t.team_id ?? (t.id % 2)
