@@ -67,6 +67,7 @@ export function Navbar() {
   function handleLogout() {
     deleteCookie("token")
     deleteCookie("username")
+    deleteCookie("user_id")
     setUsername(null)
     setOpen(false)
     router.push("/")

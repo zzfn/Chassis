@@ -27,6 +27,7 @@ struct LoginRequest {
 struct AuthResponse {
     token:    String,
     username: String,
+    user_id:  String,
 }
 
 async fn handle_register(
@@ -96,7 +97,7 @@ async fn handle_login(
         return json_err(403, "请先验证邮箱，检查你的收件箱");
     }
     let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
-    axum::Json(AuthResponse { token, username: user.username }).into_response()
+    axum::Json(AuthResponse { token, username: user.username, user_id: user.id.to_string() }).into_response()
 }
 
 #[derive(Deserialize)]
@@ -203,7 +204,7 @@ async fn handle_verify_email(
                 return json_err(403, "账户已被封禁").into_response();
             }
             let token = auth::create_token(&user.id.to_string(), &user.username, &state.jwt_secret);
-            axum::Json(AuthResponse { token, username: user.username }).into_response()
+            axum::Json(AuthResponse { token, username: user.username, user_id: user.id.to_string() }).into_response()
         }
         Ok(None) => json_err(400, "验证链接无效或已过期"),
         Err(e)   => json_err(500, &e.to_string()),

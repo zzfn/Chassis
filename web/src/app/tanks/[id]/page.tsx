@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { ArrowLeft, Copy, Check, Loader2, CheckCircle, XCircle, Shield, Swords, Share2, X, Settings, User, Lock, Shuffle } from "lucide-react"
-import { getCookie } from "@/lib/cookie"
+import { getCookie, getUserId } from "@/lib/cookie"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
 
@@ -25,6 +25,7 @@ interface TankDetail {
   agent_id: string
   agent_name: string
   owner: string
+  owner_id: string
   code: string
   created_at: string
   elo: number
@@ -404,7 +405,7 @@ export default function TankDetailPage() {
   const [challenging, setChallenging] = useState(false)
   const [challengeError, setChallengeError] = useState<string | null>(null)
 
-  const isOwner = tank ? tank.owner === (getCookie("username") ?? "") : false
+  const isOwner = tank ? tank.owner_id === (getUserId() ?? "") : false
 
   async function handleReroll() {
     const token = getCookie("token")

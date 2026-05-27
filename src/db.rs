@@ -556,6 +556,7 @@ pub struct TankDetail {
     pub agent_id: String,
     pub agent_name: String,
     pub owner: String,
+    pub owner_id: String,
     pub code: String,
     pub created_at: DateTime<Utc>,
     pub elo: f64,
@@ -646,7 +647,7 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
     use sqlx::Row;
 
     let Some(a) = sqlx::query(
-        "SELECT a.id::text, a.name, a.code, a.created_at, a.user_id, a.skill_type, u.username FROM agents a JOIN users u ON u.id = a.user_id WHERE a.id = $1"
+        "SELECT a.id::text, a.name, a.code, a.created_at, a.user_id, a.skill_type, u.username, u.id::text AS owner_id FROM agents a JOIN users u ON u.id = a.user_id WHERE a.id = $1"
     ).bind(agent_id).fetch_optional(pool).await? else { return Ok(None) };
 
     let user_id: Uuid = a.get("user_id");
@@ -699,6 +700,7 @@ pub async fn get_tank_detail(pool: &PgPool, agent_id: Uuid) -> Result<Option<Tan
         agent_id: a.get("id"),
         agent_name,
         owner: a.get("username"),
+        owner_id: a.get("owner_id"),
         code: a.get("code"),
         created_at: a.get("created_at"),
         elo,

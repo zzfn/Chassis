@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { Loader2, Copy, Check, Terminal, Cpu, Shield, Calendar, Mail, Pencil, X } from "lucide-react"
-import { getCookie } from "@/lib/cookie"
+import { getCookie, setCookie } from "@/lib/cookie"
 
 interface UserProfile {
   id: string
@@ -196,6 +196,7 @@ export default function SettingsPage() {
       const data = await res.json()
       if (!res.ok) { setNameError(data.error ?? "修改失败"); return }
       setProfile(p => p ? { ...p, username: data.username } : p)
+      setCookie("username", data.username)
       setEditingName(false)
     } catch {
       setNameError("网络错误")

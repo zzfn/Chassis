@@ -23,6 +23,7 @@ function Content() {
         if (!r.ok) throw new Error(data.error ?? "验证失败")
         setCookie("token",    data.token)
         setCookie("username", data.username)
+        setCookie("user_id",  data.user_id)
         setStatus("success")
         setTimeout(() => router.push("/tanks?new=1"), 2000)
       })

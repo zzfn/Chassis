@@ -35,6 +35,7 @@ export default function LoginPage() {
       if (!res.ok) { setError(data.error ?? "登录失败"); return }
       setCookie("token",    data.token)
       setCookie("username", data.username)
+      setCookie("user_id",  data.user_id)
       router.push("/tanks")
     } catch {
       setError("无法连接到服务器，请检查后端是否已启动")
