@@ -497,12 +497,9 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
     // ── 拖尾 dot 对象池 ───────────────────────────────────
     trails.current.clear()
     data.telemetry[0]?.tanks.forEach(t => {
-      const styleName  = data.skins?.[t.name]?.trail_style ?? 'default'
-      const teamId     = t.team_id ?? (t.id % 2)
-      const palColor   = ((data.telemetry[0]?.tanks.length ?? 0) >= 3
-        ? TEAM_PIXI_PALETTE[teamId % 2]
-        : PALETTE[t.id % PALETTE.length]).body
-      const trailColor = TRAIL_COLORS[styleName] ?? palColor
+      const styleName = data.skins?.[t.name]?.trail_style
+      if (!styleName || styleName === 'default') return  // 未购买拖尾则不创建
+      const trailColor = TRAIL_COLORS[styleName] ?? 0xffffff
       const dots: PIXI.Graphics[] = []
       for (let i = 0; i < TRAIL_LEN; i++) {
         const g = new PIXI.Graphics()
@@ -578,12 +575,14 @@ function PixiView({ data, playing, seekFn, onTick, onEnd, onCanvasReady, onFps }
               prev.current.tanks.forEach(pt => {
                 const ct = curr.current!.tanks.find(x => x.id === pt.id)
                 if (ct && ct.hp < pt.hp) hitFlashes.current.set(pt.id, 0)
-                // 坦克移动时记录前一帧位置到拖尾历史
-                if (ct?.alive && (pt.x !== ct.x || pt.y !== ct.y)) {
-                  const tr = trails.current.get(pt.id)
-                  if (tr) {
+                // 移动时追加位置；静止时每帧收缩一格，让拖尾自然消失
+                const tr = trails.current.get(pt.id)
+                if (tr) {
+                  if (ct?.alive && (pt.x !== ct.x || pt.y !== ct.y)) {
                     tr.positions.unshift({ x: pt.x * S, y: pt.y * S })
                     if (tr.positions.length > TRAIL_LEN) tr.positions.pop()
+                  } else if (tr.positions.length > 0) {
+                    tr.positions.pop()
                   }
                 }
               })
