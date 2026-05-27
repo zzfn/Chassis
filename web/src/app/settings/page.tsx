@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Loader2, Copy, Check, Terminal, Cpu, Shield, Calendar, Mail } from "lucide-react"
+import { Loader2, Copy, Check, Terminal, Cpu, Shield, Calendar, Mail, Pencil, X } from "lucide-react"
 import { getCookie } from "@/lib/cookie"
 
 interface UserProfile {
@@ -177,6 +177,32 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameError, setNameError] = useState("")
+
+  async function handleSaveName() {
+    const token = getToken()
+    if (!token) return
+    setNameSaving(true)
+    setNameError("")
+    try {
+      const res = await fetch(`${apiBase}/api/me`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ username: nameInput }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setNameError(data.error ?? "修改失败"); return }
+      setProfile(p => p ? { ...p, username: data.username } : p)
+      setEditingName(false)
+    } catch {
+      setNameError("网络错误")
+    } finally {
+      setNameSaving(false)
+    }
+  }
 
   function getToken() {
     const t = getCookie("token")
@@ -376,15 +402,51 @@ export default function SettingsPage() {
                 </span>
               </div>
 
-              <span
-                className="font-black text-3xl leading-none text-white truncate"
-                style={{
-                  fontFamily: "var(--font-outfit)",
-                  textShadow: `0 0 14px ${avatarColor}80`,
-                }}
-              >
-                {profile?.username}
-              </span>
+              {editingName ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={nameInput}
+                      onChange={e => { setNameInput(e.target.value); setNameError("") }}
+                      onKeyDown={e => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") setEditingName(false) }}
+                      maxLength={20}
+                      className="w-44 bg-black/60 border-b-2 px-1 py-0.5 font-black text-2xl text-white outline-none"
+                      style={{ borderColor: avatarColor, fontFamily: "var(--font-outfit)" }}
+                    />
+                    <button
+                      onClick={handleSaveName}
+                      disabled={nameSaving}
+                      className="px-2.5 py-1 font-mono text-xs font-black uppercase tracking-widest transition-opacity disabled:opacity-40"
+                      style={{ border: `2px solid ${avatarColor}`, color: avatarColor }}
+                    >
+                      {nameSaving ? <Loader2 className="size-3 animate-spin" /> : "保存"}
+                    </button>
+                    <button onClick={() => { setEditingName(false); setNameError("") }}>
+                      <X className="size-4 text-white/40 hover:text-white/80" />
+                    </button>
+                  </div>
+                  {nameError && (
+                    <span className="font-mono text-[11px] text-red-400">{nameError}</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group/name">
+                  <span
+                    className="font-black text-3xl leading-none text-white truncate"
+                    style={{ fontFamily: "var(--font-outfit)", textShadow: `0 0 14px ${avatarColor}80` }}
+                  >
+                    {profile?.username}
+                  </span>
+                  <button
+                    onClick={() => { setNameInput(profile?.username ?? ""); setEditingName(true) }}
+                    className="opacity-0 group-hover/name:opacity-60 hover:!opacity-100 transition-opacity"
+                    title="修改用户名"
+                  >
+                    <Pencil className="size-4 text-white" />
+                  </button>
+                </div>
+              )}
 
               {/* ID 行 */}
               <div className="flex items-center gap-3 flex-wrap">

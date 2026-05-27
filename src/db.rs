@@ -279,6 +279,15 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
     }))
 }
 
+pub async fn update_username(pool: &PgPool, user_id: Uuid, new_username: &str) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
+        .bind(new_username)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 pub async fn count_user_tanks(pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx::Error> {
     use sqlx::Row;
     let row = sqlx::query(

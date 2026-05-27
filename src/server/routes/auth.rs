@@ -232,13 +232,44 @@ async fn handle_me(
     }
 }
 
+#[derive(Deserialize)]
+struct UpdateMeReq {
+    username: String,
+}
+
+async fn handle_update_me(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<UpdateMeReq>,
+) -> impl IntoResponse {
+    let pool = &state.pool;
+    let Some(user_id) = extract_user_id(&headers, &state.jwt_secret) else {
+        return json_err(401, "未登录");
+    };
+    let username = req.username.trim().to_string();
+    if username.len() < 2 || username.len() > 20 {
+        return json_err(400, "用户名长度需在 2~20 字符之间");
+    }
+    if !username.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        return json_err(400, "用户名只能包含字母、数字、下划线和连字符");
+    }
+    match db::update_username(pool, user_id, &username).await {
+        Ok(true)  => axum::Json(serde_json::json!({ "username": username })).into_response(),
+        Ok(false) => json_err(404, "用户不存在"),
+        Err(e) if e.to_string().contains("duplicate") || e.to_string().contains("unique") => {
+            json_err(409, "用户名已被占用")
+        }
+        Err(e)    => json_err(500, &e.to_string()),
+    }
+}
+
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/register",     post(handle_register))
         .route("/api/login",        post(handle_login))
         .route("/api/verify-email",        get(handle_verify_email))
         .route("/api/resend-verification", post(handle_resend_verification))
-        .route("/api/me",           get(handle_me))
+        .route("/api/me",           get(handle_me).patch(handle_update_me))
         .route("/api/keys",         get(list_keys).post(create_key))
         .route("/api/keys/:id",     axum::routing::delete(delete_key))
 }
