@@ -183,10 +183,55 @@ me.speak("text")             // 在回放中显示气泡（不消耗行动，最
             </ol>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <p className="mb-1 font-semibold text-white">💥 同归于尽判定</p>
+            <p className="mb-2 text-zinc-400">同一回合所有坦克 HP 同时归零时，按以下优先级判定：</p>
+            <ol className="ml-4 flex list-decimal flex-col gap-1 text-zinc-400">
+              <li><span className="text-yellow-300 font-semibold">星星数多</span>者胜</li>
+              <li>星星数相同则 <span className="text-yellow-300 font-semibold">JS 报错次数少</span>者胜</li>
+              <li>报错数相同则 <span className="text-yellow-300 font-semibold">JS 平均执行耗时短</span>者胜（更高效的代码获胜）</li>
+              <li>完全相同则平局</li>
+            </ol>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
             <p className="mb-1 font-semibold text-white">⭐ 星星的作用</p>
             <p className="text-zinc-400">
               每 30 回合刷新 1 颗星，场上最多同时存在 3 颗。走到同一格即可捡取，星星数是超时判定的<span className="text-yellow-300 font-semibold">首要</span>胜负依据，建议在保命的同时积极拾取。
             </p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <p className="mb-2 font-semibold text-white">⭐ 星星 ELO 加分</p>
+            <p className="mb-3 text-sm text-zinc-400 leading-relaxed">
+              每场结算时，捡到的星星额外注入 ELO，加分随段位升高递减，不从对手扣除。
+              公式：<Code>加分/颗 = max(0, 3.0 − (elo − 1000) / 300)</Code>
+            </p>
+            <div className="overflow-hidden rounded-lg border border-zinc-800">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-800 bg-zinc-900">
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">段位</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">ELO 范围</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-zinc-500">每颗星加分</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/30">
+                  {[
+                    ["青铜", "< 1100",       "2.67 – 3.67"],
+                    ["白银", "1100 – 1299",  "2.34 – 2.67"],
+                    ["黄金", "1300 – 1499",  "1.67 – 2.33"],
+                    ["铂金", "1500 – 1799",  "0 – 1.67（elo 1900 时降至 0）"],
+                    ["钻石", "1800 – 2099",  "0"],
+                    ["大师", "2100 – 2499",  "0"],
+                    ["王者", "≥ 2500",        "0"],
+                  ].map(([tier, range, bonus]) => (
+                    <tr key={tier}>
+                      <td className="px-4 py-2.5 text-xs text-zinc-300">{tier}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-blue-400">{range}</td>
+                      <td className="px-4 py-2.5 text-xs text-yellow-300">{bonus}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </Section>
