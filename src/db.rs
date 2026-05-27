@@ -1209,8 +1209,8 @@ pub async fn list_model_leaderboard(pool: &PgPool) -> Result<Vec<ModelEntry>, sq
         )
         SELECT
             model,
-            COUNT(DISTINCT user_id::text || '|' || name)  AS tank_count,
-            COUNT(DISTINCT user_id)                        AS user_count,
+            COUNT(DISTINCT la.user_id::text || '|' || la.name)  AS tank_count,
+            COUNT(DISTINCT la.user_id)                         AS user_count,
             COALESCE(AVG(er.elo), 1000.0)                 AS avg_elo,
             COALESCE(SUM(er.elo), 0.0)                    AS total_elo,
             COALESCE(SUM(pvp.pvp_wins), 0)::BIGINT        AS total_wins,
