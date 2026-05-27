@@ -102,14 +102,6 @@ const TRAIL_STYLES = [
   { value: "plasma",  label: "等离子", color: "#a855f7" },
 ] as const
 
-const AI_OPTIONS = [
-  { value: "",         label: "自己写的" },
-  { value: "Claude",   label: "Claude" },
-  { value: "GPT",      label: "ChatGPT" },
-  { value: "Copilot",  label: "GitHub Copilot" },
-  { value: "Gemini",   label: "Gemini" },
-  { value: "Other",    label: "其他 AI" },
-]
 
 const AI_ICONS: Record<string, React.ReactNode> = {
   Claude:  <img src="/ai-icons/claude.ico"  width={14} height={14} className="inline-block rounded-sm" alt="Claude" />,
@@ -118,6 +110,21 @@ const AI_ICONS: Record<string, React.ReactNode> = {
   Gemini:  <img src="/ai-icons/gemini.ico"  width={14} height={14} className="inline-block rounded-sm" alt="Gemini" />,
   Cursor:  <img src="/ai-icons/cursor.ico"  width={14} height={14} className="inline-block rounded-sm" alt="Cursor" />,
   Other: "🤖",
+}
+
+const AI_ALIASES: Record<string, string> = {
+  composer: "Cursor",
+  chatgpt:  "GPT",
+}
+
+function getAiIcon(name: string | null | undefined): React.ReactNode {
+  if (!name) return null
+  if (AI_ICONS[name]) return AI_ICONS[name]
+  const lower = name.toLowerCase()
+  const alias = Object.keys(AI_ALIASES).find(k => lower.includes(k))
+  if (alias) return AI_ICONS[AI_ALIASES[alias]]
+  const match = Object.keys(AI_ICONS).find(k => k !== "Other" && lower.includes(k.toLowerCase()))
+  return match ? AI_ICONS[match] : AI_ICONS["Other"]
 }
 
 interface Achievement { label: string; icon: string; desc: string }
@@ -1003,15 +1010,13 @@ export default function TankDetailPage() {
                   )}
                   {rightTab === "code" && isOwner && (
                     <>
-                      <select
+                      <input
+                        type="text"
                         value={submittedBy}
                         onChange={e => setSubmittedBy(e.target.value)}
-                        className="border-4 border-black bg-white px-2 py-1.5 text-sm font-bold focus:outline-none"
-                      >
-                        {AI_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                        placeholder="用的啥 AI？"
+                        className="w-28 border-4 border-black bg-white px-2 py-1.5 text-sm font-bold focus:outline-none"
+                      />
                       <button
                         onClick={handleSubmit}
                         disabled={submitting}
@@ -1227,7 +1232,7 @@ ${guideUrl}
                       <span className="font-black text-2xl">V{v.version}</span>
                       {v.submitted_by && (
                         <span className="flex items-center gap-1 border-2 border-black bg-[#C4B5FD] px-1.5 py-0.5 text-xs font-black">
-                          {AI_ICONS[v.submitted_by] ?? "🤖"} {v.submitted_by}
+                          {getAiIcon(v.submitted_by)} {v.submitted_by}
                         </span>
                       )}
                     </div>
@@ -1744,7 +1749,7 @@ ${guideUrl}
                   <span className="font-black text-xl">V{viewingCode.version}</span>
                   {viewingCode.submitted_by && (
                     <span className="border-2 border-black bg-white px-2 py-0.5 text-xs font-black">
-                      {AI_ICONS[viewingCode.submitted_by] ?? "🤖"} {viewingCode.submitted_by}
+                      {getAiIcon(viewingCode.submitted_by)} {viewingCode.submitted_by}
                     </span>
                   )}
                   <span className="text-xs font-bold text-black/60">

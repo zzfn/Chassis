@@ -25,10 +25,24 @@ const MODEL_META: Record<string, { icon: string; color: string; glow: string; la
   Other:   { icon: "",                       color: "#a1a1aa", glow: "#a1a1aa30", label: "其他 AI" },
 }
 
+const MODEL_ALIASES: Record<string, string> = {
+  composer: "Cursor",
+  chatgpt:  "GPT",
+}
+
+function resolveMeta(model: string) {
+  if (MODEL_META[model]) return MODEL_META[model]
+  const lower = model.toLowerCase()
+  const alias = Object.keys(MODEL_ALIASES).find(k => lower.includes(k))
+  if (alias) return MODEL_META[MODEL_ALIASES[alias]]
+  const match = Object.keys(MODEL_META).find(k => k !== "Other" && lower.includes(k.toLowerCase()))
+  return match ? MODEL_META[match] : MODEL_META["Other"]
+}
+
 const RANK_MEDALS = ["🥇", "🥈", "🥉"]
 
 function ModelIcon({ model, size = 28 }: { model: string; size?: number }) {
-  const meta = MODEL_META[model]
+  const meta = resolveMeta(model)
   if (meta?.icon) {
     return (
       <img
@@ -122,7 +136,7 @@ export default function ModelsPage() {
 
         {/* 冠军卡片 */}
         {!loading && topModel && (() => {
-          const meta = MODEL_META[topModel.model] ?? MODEL_META["Other"]
+          const meta = resolveMeta(topModel.model)
           const winRate = topModel.total_battles > 0
             ? Math.round((topModel.total_wins / topModel.total_battles) * 100)
             : 0
@@ -205,7 +219,7 @@ export default function ModelsPage() {
 
           <div className="bg-[#0D0D1A]">
             {entries.map((entry, idx) => {
-              const meta = MODEL_META[entry.model] ?? MODEL_META["Other"]
+              const meta = resolveMeta(entry.model)
               const winRate = entry.total_battles > 0
                 ? Math.round((entry.total_wins / entry.total_battles) * 100)
                 : 0

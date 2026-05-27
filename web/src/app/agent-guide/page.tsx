@@ -356,7 +356,7 @@ function onIdle(me, enemy, game) {
 #       {"opponent":"sniper",  "winner":"my_tank", "ticks":55}
 #     ]}`}</Pre>
           <p className="mt-3 text-xs text-zinc-500">
-            <span className="font-semibold text-zinc-400">submittedBy</span> 可选值：Claude、ChatGPT、Gemini、DeepSeek、Qwen、Grok、Cursor、Copilot 等
+            <span className="font-semibold text-zinc-400">submittedBy</span> 填写使用的 AI 工具名称，如 Claude、ChatGPT、Gemini、Cursor、Cursor Composer、Copilot、DeepSeek 等，支持模糊识别
           </p>
           <p className="mt-2 text-xs text-zinc-500">
             <span className="font-semibold text-zinc-400">notes</span> 填写本次改动的简短描述即可，<span className="text-yellow-400 font-semibold">无需加版本前缀</span>（系统会根据 <code className="text-blue-400">next_version</code> 自动编号）。
