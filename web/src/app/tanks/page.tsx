@@ -20,21 +20,20 @@ const CARD_SHADOWS: [string, string][] = [
   ["#FF3AF2", "#FF6B35"],
 ]
 
-const DEFAULT_CODE = `// 入门模板：技能 → 躲子弹 → 捡星 → 朝敌开火 → 冲锋
-function onIdle(me, enemy, game) {
-  var mx  = me.tank.position[0], my = me.tank.position[1];
-  var cur = me.tank.direction;
-  var dirs = ["north","east","south","west"];
+const DEFAULT_CODE = `function onIdle(me, enemy, game) {
+  var dirs = ["north", "east", "south", "west"];
   var ddx  = [0, 1, 0, -1], ddy = [-1, 0, 1, 0];
+  var mx = me.tank.position[0], my = me.tank.position[1];
+  var cur = me.tank.direction;
 
-  // 判断某方向下一格是否可通行
+  // 判断某方向是否可通行
   function free(d) {
     var i = dirs.indexOf(d), nx = mx + ddx[i], ny = my + ddy[i];
     var row = game.map[ny];
     return !!(row && (row[nx] === "." || row[nx] === "o"));
   }
 
-  // 最短路径转向，已对齐返回 false
+  // 转向目标方向，已对齐返回 false
   function turnTo(want) {
     if (cur === want) return false;
     var diff = (dirs.indexOf(want) - dirs.indexOf(cur) + 4) % 4;
@@ -42,82 +41,25 @@ function onIdle(me, enemy, game) {
     return true;
   }
 
-  // 朝目标坐标的最优方向
-  function dirTo(tx, ty) {
-    var dx = tx - mx, dy = ty - my;
-    return Math.abs(dx) >= Math.abs(dy)
+  // 有敌人：转向 → 开火 → 前进
+  if (enemy) {
+    var dx = enemy.tank.position[0] - mx;
+    var dy = enemy.tank.position[1] - my;
+    var want = Math.abs(dx) >= Math.abs(dy)
       ? (dx > 0 ? "east" : "west")
       : (dy > 0 ? "south" : "north");
-  }
-
-  // 1. 技能：冷却好立即触发
-  if (me.skill.remainingCooldownFrames === 0) {
-    var sk = me.skill.type;
-    if      (sk === "shield")   me.shield();
-    else if (sk === "freeze")   me.freeze();
-    else if (sk === "stun")     me.stun();
-    else if (sk === "overload") me.overload();
-    else if (sk === "cloak")    me.cloak();
-    else if (sk === "poison")   me.poison();
-    else if (sk === "boost")    me.boost();
-  }
-
-  // 2. 躲子弹：检测敌方子弹是否在同行/列飞来，及时闪躲
-  var eb = enemy && enemy.bullet;
-  if (eb) {
-    var bx = eb.position[0], by = eb.position[1], bd = eb.direction;
-    var threatened = false, bdist = 99;
-    if      (bd === "east"  && by === my && bx < mx) { threatened = true; bdist = mx - bx; }
-    else if (bd === "west"  && by === my && bx > mx) { threatened = true; bdist = bx - mx; }
-    else if (bd === "south" && bx === mx && by < my) { threatened = true; bdist = my - by; }
-    else if (bd === "north" && bx === mx && by > my) { threatened = true; bdist = by - my; }
-
-    if (threatened && bdist <= 5) {
-      // 垂直方向闪躲；随机先试哪侧，避免所有人往同一边跑
-      var perp = (bd === "east" || bd === "west") ? ["north","south"] : ["east","west"];
-      if (Math.random() < 0.5) { var tmp = perp[0]; perp[0] = perp[1]; perp[1] = tmp; }
-      for (var pi = 0; pi < 2; pi++) {
-        if (free(perp[pi])) {
-          if (!turnTo(perp[pi])) me.go();  // 已对齐直接走，否则先转向
-          return;
-        }
-      }
-    }
-  }
-
-  // 3. 捡最近星星（从 game.stars 全量里选最近的，距离 < 8 格时优先追）
-  var bestStar = null, bestStarDist = 8;
-  for (var si = 0; si < game.stars.length; si++) {
-    var sd = Math.abs(game.stars[si][0] - mx) + Math.abs(game.stars[si][1] - my);
-    if (sd < bestStarDist) { bestStarDist = sd; bestStar = game.stars[si]; }
-  }
-  if (bestStar) {
-    var swant = dirTo(bestStar[0], bestStar[1]);
-    if (!turnTo(swant) && free(swant)) me.go();
-    return;  // 不管是否转向，本帧不做其他事
-  }
-
-  // 4. 无敌人 → 巡逻；偶尔随机转向让路线不可预测
-  if (!enemy) {
-    if (free(cur)) {
-      // 5% 概率随机转向，增加不可预测性
-      if (Math.random() < 0.05) {
-        me.turn(Math.random() < 0.5 ? "left" : "right");
-      } else {
-        me.go();
-      }
-    } else {
-      me.turn(Math.random() < 0.5 ? "left" : "right");
-    }
+    if (turnTo(want)) return;
+    if (me.tank.shootCooldown === 0) me.fire();
+    if (free(want)) me.go();
     return;
   }
 
-  // 5. 有敌人 → 对齐 → 开火 → 推进
-  var want = dirTo(enemy.tank.position[0], enemy.tank.position[1]);
-  if (turnTo(want)) return;
-  if (me.tank.shootCooldown === 0) me.fire();
-  if (free(want)) me.go();
-  else me.turn(Math.random() < 0.5 ? "left" : "right");
+  // 无敌人：向前走，遇墙随机转向
+  if (free(cur)) {
+    me.go();
+  } else {
+    me.turn(Math.random() < 0.5 ? "left" : "right");
+  }
 }`
 
 interface TankSkin { svg?: string; description?: string }
