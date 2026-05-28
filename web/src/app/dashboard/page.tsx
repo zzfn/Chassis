@@ -173,11 +173,9 @@ function TankAvatar({ name, svg }: { name: string; svg?: string }) {
   const color = `hsl(${hue}, 70%, 60%)`
   return (
     <div
-      className="flex size-12 shrink-0 items-center justify-center rounded-full border-4 overflow-hidden"
+      className="flex size-12 shrink-0 items-center justify-center rounded-full overflow-hidden"
       style={{
-        background:  `hsl(${hue}, 40%, 15%)`,
-        borderColor: color,
-        boxShadow:   `0 0 12px ${color}60`,
+        background: `hsl(${hue}, 40%, 15%)`,
       }}
     >
       {svg
